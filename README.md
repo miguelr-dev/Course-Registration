@@ -44,12 +44,51 @@ Course-Registration/
 ├── README.md                 # you are here
 ├── docs/
 │   ├── REQUIREMENTS.md       # full project requirements (markdown)
+│   ├── DESIGN-HANDOFF.md     # UI direction, design canvas link, Claude Design prompt
 │   └── CourseRegReqs.docx    # original requirements document
+├── src/
+│   ├── data/                 # types, sample data seed, in-browser store
+│   ├── lib/                  # registration rules, GPA/statistics, wildcard search, formatting
+│   ├── components/           # app shell, help drawer, icons, shared UI
+│   ├── screens/              # one file per screen (see below)
+│   └── styles/global.css     # design tokens and component styles
+├── vercel.json               # single-page-app rewrite for Vercel
 └── .github/workflows/ci.yml  # CI checks, run on every PR and push to main
 ```
 
-Application code lives under `src/` once development starts; the CI workflow
-detects the stack automatically (see below).
+## The prototype
+
+A React + TypeScript single-page app (Vite). Data lives in the browser
+(`localStorage`) and is seeded with a small sample university, so every screen
+is functional without a backend: registration rules are enforced, notes and
+outline history are append-only, grades update statistics live, and every
+transaction is labeled with the user's name, date and time.
+
+| Screen | Route | Who |
+|---|---|---|
+| Sign in / forced password change | `/login`, `/change-password` | everyone |
+| Student dashboard (schedule, eligible major courses) | `/` | students |
+| Course search & registration | `/search` | students |
+| Electronic student record + append-only notes | `/record` | students (own), advisors, registrar |
+| Approved major outline + change history | `/outline` | students (own), advisors |
+| Faculty & course information | `/faculty` | everyone with FCI access |
+| Grade sheet + course statistics | `/grades` | primary instructor, registrar |
+| Authorized users + password reset | `/users` | system administrators |
+
+Sample accounts (password `signmeup`): student **20231847**, advisor **30117**,
+faculty **28804**, administrator **10093**. "Reset sample data" on the sign-in
+page restores the seed.
+
+```bash
+npm install
+npm run dev        # http://localhost:5173
+npm test           # unit tests for the rules
+npm run typecheck
+npm run build
+```
+
+Design: the chosen direction and Claude Design prompt are in
+[docs/DESIGN-HANDOFF.md](docs/DESIGN-HANDOFF.md).
 
 ## Development
 
