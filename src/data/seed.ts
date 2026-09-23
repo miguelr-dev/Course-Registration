@@ -1,9 +1,9 @@
-import type { Db } from './types';
+import type { Course, Db, Major, Registration, RegistrationType, Student, User } from './types';
 
 const T = '2026-09-12T14:41:00';
 
 export function createSeed(): Db {
-  return {
+  const db: Db = {
     term: 'Fall 2026',
     registrationCloses: '2026-09-26',
     gradeWindow: { opens: '2026-12-14', closes: '2026-12-21' },
@@ -178,7 +178,10 @@ export function createSeed(): Db {
       },
     ],
 
-    gradeNotes: [],
+    gradeNotes: [
+      { scheduleNo: '12011', at: '2026-09-18T15:00:00', by: 'Daniel Nakamura', text: 'Midterm scores posted. The final exam is cumulative.' },
+      { scheduleNo: '14010', at: '2026-09-16T11:20:00', by: 'Samuel Okonkwo', text: 'Lab attendance counts toward the course grade.' },
+    ],
     transactions: [
       { at: '2026-08-28T11:02:00', by: 'Rosa Delgado-Munoz', subsystem: 'MAJOR', text: 'Approved outline for Maria Okafor-Reyes (20231847)' },
       { at: '2026-09-08T10:15:00', by: 'Maria Okafor-Reyes', subsystem: 'REG', text: 'Registered CS 310 (12011)' },
@@ -187,6 +190,7 @@ export function createSeed(): Db {
       { at: '2026-09-15T09:02:00', by: 'Kenji Ibarra-Novak', subsystem: 'FRAMEWORK', text: 'Reset password for Samuel Okonkwo (31855)' },
     ],
   };
+  return finishRoster(db);
 }
 
 const FIRST = ['Amara', 'Priya', 'Elijah', 'Wen', 'Samuel', 'Noor', 'Isabel', 'Kwame', 'Hana', 'Diego', 'Lucía', 'Owen', 'Zainab', 'Théo', 'Yara', 'Felix', 'Mei-Ling', 'Arjun', 'Sofia', 'Jonah'];
@@ -199,6 +203,111 @@ export function fillerName(studentId: string): string {
 }
 
 /** Deterministic filler registrations so seat counts look real. Student IDs are synthetic (2029xxxxx). */
+const EXTRA_COURSES: Course[] = [
+  { id: 'BIO 330', title: 'Cell Biology', description: 'Cell structure, membranes, signaling and the cell cycle, with a weekly laboratory.', units: 4, prereqs: ['BIO 220'], deptId: 'BIO', level: 'upper', qualifiedFaculty: ['F-11302'] },
+  { id: 'PHYS 120', title: 'General Physics II', description: 'Electricity, magnetism and optics with laboratory.', units: 4, prereqs: ['PHYS 110'], deptId: 'PHYS', level: 'lower', qualifiedFaculty: ['F-11480'] },
+  { id: 'PHYS 310', title: 'Classical Mechanics', description: 'Newtonian mechanics, oscillations and rigid bodies using vector calculus.', units: 4, prereqs: ['PHYS 120', 'MATH 240'], deptId: 'PHYS', level: 'upper', qualifiedFaculty: ['F-11480'] },
+  { id: 'ENGL 210', title: 'Introduction to Literature', description: 'Close reading of poetry, fiction and drama.', units: 3, prereqs: ['ENGL 110'], deptId: 'ENGL', level: 'lower', qualifiedFaculty: [] },
+  { id: 'ENGL 320', title: 'Shakespeare', description: 'Selected plays and poems, with attention to performance and historical context.', units: 3, prereqs: ['ENGL 210'], deptId: 'ENGL', level: 'upper', qualifiedFaculty: [] },
+  { id: 'HIST 210', title: 'United States to 1877', description: 'Colonial America through Reconstruction.', units: 3, prereqs: [], deptId: 'HIST', level: 'lower', qualifiedFaculty: [] },
+  { id: 'HIST 340', title: 'Modern Europe', description: 'Europe from the French Revolution to the present.', units: 3, prereqs: ['HIST 120'], deptId: 'HIST', level: 'upper', qualifiedFaculty: [] },
+];
+
+const EXTRA_MAJORS: Major[] = [
+  { id: 'MATH-BS', title: 'Mathematics, B.S.', deptId: 'MATH', unitsRequired: 120, majorUnits: 42, requiredCourses: ['MATH 150', 'MATH 151', 'MATH 240', 'MATH 310', 'MATH 320'], electives: ['CS 250'], advisors: ['27310'] },
+  { id: 'BIO-BS', title: 'Biology, B.S.', deptId: 'BIO', unitsRequired: 120, majorUnits: 36, requiredCourses: ['BIO 101', 'BIO 220', 'BIO 330', 'ENGL 110', 'MATH 150'], electives: ['PHYS 110'], advisors: ['33010'] },
+  { id: 'PHYS-BS', title: 'Physics, B.S.', deptId: 'PHYS', unitsRequired: 120, majorUnits: 44, requiredCourses: ['PHYS 110', 'PHYS 120', 'PHYS 310', 'MATH 150', 'MATH 151', 'MATH 240'], electives: ['MATH 310'], advisors: ['33021'] },
+  { id: 'ENGL-BA', title: 'English, B.A.', deptId: 'ENGL', unitsRequired: 120, majorUnits: 36, requiredCourses: ['ENGL 110', 'ENGL 210', 'ENGL 320', 'HIST 120'], electives: ['HIST 210'], advisors: ['33032'] },
+  { id: 'HIST-BA', title: 'History, B.A.', deptId: 'HIST', unitsRequired: 120, majorUnits: 36, requiredCourses: ['HIST 120', 'HIST 210', 'HIST 340', 'ENGL 110'], electives: ['ENGL 210'], advisors: ['33043'] },
+];
+
+const EXTRA_USERS: User[] = [
+  { id: '33010', name: 'Elena Vasquez-Morales', jobTitle: 'Major advisor, Biology', password: 'signmeup', mustChangePassword: false, passwordSetAt: '2026-08-01', role: 'advisor', access: ['ER', 'REG', 'MAJOR', 'FCI'] },
+  { id: '33021', name: 'Owen Feld-Nakamura', jobTitle: 'Major advisor, Physics', password: 'signmeup', mustChangePassword: false, passwordSetAt: '2026-08-01', role: 'advisor', access: ['ER', 'REG', 'MAJOR', 'FCI'] },
+  { id: '33032', name: 'Hana Okonkwo-Reyes', jobTitle: 'Major advisor, English', password: 'signmeup', mustChangePassword: false, passwordSetAt: '2026-08-01', role: 'advisor', access: ['ER', 'REG', 'MAJOR', 'FCI'] },
+  { id: '33043', name: 'Jonah Marchand', jobTitle: 'Major advisor, History', password: 'signmeup', mustChangePassword: false, passwordSetAt: '2026-08-01', role: 'advisor', access: ['ER', 'REG', 'MAJOR', 'FCI'] },
+];
+
+const MAJOR_BY_DEPT: Record<string, string> = { CS: 'CS-BS', MATH: 'MATH-BS', BIO: 'BIO-BS', PHYS: 'PHYS-BS', ENGL: 'ENGL-BA', HIST: 'HIST-BA' };
+
+const PRIOR_COURSES: Record<string, { courseId: string; title: string; units: number }[]> = {
+  'CS-BS': [{ courseId: 'CS 101', title: 'Programming I', units: 4 }, { courseId: 'MATH 150', title: 'Calculus I', units: 4 }],
+  'MATH-BS': [{ courseId: 'MATH 150', title: 'Calculus I', units: 4 }, { courseId: 'MATH 151', title: 'Calculus II', units: 4 }],
+  'BIO-BS': [{ courseId: 'BIO 101', title: 'Introduction to Biology', units: 3 }, { courseId: 'ENGL 110', title: 'College Writing', units: 3 }],
+  'PHYS-BS': [{ courseId: 'PHYS 110', title: 'General Physics I', units: 4 }, { courseId: 'MATH 150', title: 'Calculus I', units: 4 }],
+  'ENGL-BA': [{ courseId: 'ENGL 110', title: 'College Writing', units: 3 }, { courseId: 'HIST 120', title: 'World History since 1500', units: 3 }],
+  'HIST-BA': [{ courseId: 'HIST 120', title: 'World History since 1500', units: 3 }, { courseId: 'ENGL 110', title: 'College Writing', units: 3 }],
+};
+
+function gradeFor(type: RegistrationType, n: number): string | undefined {
+  if (n % 11 === 0) return undefined;
+  if (type === 'audit') return 'AU';
+  if (type === 'crnc') return n % 5 === 0 ? 'NC' : 'CR';
+  const letters = ['A', 'A-', 'B+', 'B', 'B', 'B-', 'C+', 'C', 'C', 'C-', 'D', 'F'];
+  return letters[n % letters.length];
+}
+
+function finishRoster(db: Db): Db {
+  const courseBySchedule = new Map(db.offerings.map((o) => [o.scheduleNo, o.courseId]));
+  const coursesByStudent = new Map<string, string[]>();
+  for (const reg of db.registrations) {
+    if (!reg.studentId.startsWith('2029')) continue;
+    const courseId = courseBySchedule.get(reg.scheduleNo);
+    if (!courseId) continue;
+    const list = coursesByStudent.get(reg.studentId) ?? [];
+    list.push(courseId);
+    coursesByStudent.set(reg.studentId, list);
+  }
+
+  const roster: Student[] = [...coursesByStudent.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([id, courseIds]) => {
+    const n = parseInt(id.slice(-5), 10) || 0;
+    const full = fillerName(id);
+    const space = full.indexOf(' ');
+    const counts = new Map<string, number>();
+    for (const courseId of courseIds) {
+      const dept = courseId.split(' ')[0];
+      counts.set(dept, (counts.get(dept) ?? 0) + 1);
+    }
+    const dept = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0];
+    const majorId = MAJOR_BY_DEPT[dept] ?? 'CS-BS';
+    const current = new Set(courseIds);
+    const completed = (PRIOR_COURSES[majorId] ?? []).filter((c) => !current.has(c.courseId)).map((c) => ({ ...c, term: 'Spring 2026', grade: n % 7 === 0 ? 'B' : 'A-' }));
+    const month = String((n % 12) + 1).padStart(2, '0');
+    const day = String((n % 27) + 1).padStart(2, '0');
+    return {
+      id,
+      firstName: full.slice(0, space),
+      lastName: full.slice(space + 1),
+      phone: `(310) 555-${String(n % 10000).padStart(4, '0')}`,
+      address: `${1200 + (n % 7000)} Broxton Ave, Los Angeles, CA 90024`,
+      dateOfBirth: `200${n % 6}-${month}-${day}`,
+      majorId,
+      graduate: false,
+      standing: n % 23 === 0 ? 'Academic probation' : 'Good standing',
+      completed,
+      transfer: [],
+      notes: n % 29 === 0 ? [{ at: '2026-09-04T10:00:00', byEmployeeId: '30117', category: 'advising' as const, text: 'Reviewed Fall 2026 registration. Standing confirmed.' }] : [],
+    };
+  });
+
+  const registrations: Registration[] = db.registrations.map((reg) => {
+    if (!reg.studentId.startsWith('2029')) return reg;
+    const n = (parseInt(reg.studentId.slice(-5), 10) || 0) + parseInt(reg.scheduleNo, 10);
+    const grade = gradeFor(reg.type, n);
+    if (!grade) return reg;
+    return { ...reg, grade, ...(n % 37 === 0 ? { gradeNote: 'Midterm makeup completed with the instructor.' } : {}) };
+  });
+
+  return {
+    ...db,
+    courses: [...db.courses, ...EXTRA_COURSES],
+    majors: [...db.majors, ...EXTRA_MAJORS],
+    users: [...db.users, ...EXTRA_USERS],
+    students: [...db.students, ...roster],
+    registrations,
+  };
+}
+
 function seatFiller(scheduleNo: string, count: number) {
   const out = [];
   for (let i = 0; i < count; i++) {
