@@ -76,27 +76,98 @@ transaction is labeled with the user's name, date and time.
 | Grade sheet + course statistics | `/grades` | primary instructor, registrar |
 | Authorized users + access areas | `/users` | system administrators |
 
-### Signing in
+### Authentication (Clerk)
 
-Authentication is handled by [Clerk](https://clerk.com). Anyone with an
-**@sdsu.edu** address can create an account and sign in; the Clerk instance's
-allowlist refuses every other domain, and the app checks the domain again
-before it lets a session through. A new address gets a student account with an
-empty record on first sign-in. An administrator can add a person from
-*Authorized users* with their SDSU email and the access areas they should have;
-that role applies the first time the address signs in. Addresses listed in
-`VITE_ADMIN_EMAILS` become administrators automatically.
+Sign-in and sign-up are handled by [Clerk](https://clerk.com); SignMeUp never
+stores or sees a password. Anyone with an **@sdsu.edu** address can create an
+account and sign in. Two layers enforce that:
+
+1. The Clerk instance's **allowlist** contains `*@sdsu.edu` and is enforced on
+   both sign-up and sign-in, so other domains are refused before an account
+   exists.
+2. The app checks the domain again on every session (`src/lib/auth.ts`). A
+   session from any other address only ever sees a "cannot use SignMeUp"
+   screen with a sign-out button.
+
+What happens on first sign-in:
+
+- A new address gets a **student** account with an empty record and access to
+  REG, ER, MAJOR and FCI. Its name comes from the Clerk profile.
+- An address listed in `VITE_ADMIN_EMAILS` becomes a **system administrator**
+  with every access area instead.
+- An address that an administrator has already added under *Authorized users*
+  takes the role and access areas assigned there.
+
+Administrators manage roles from `/users`: add a person by employee number,
+SDSU email, job title, role and access areas, or change an existing user's
+access areas. Password resets happen on the sign-in page ("Forgot password"),
+not in the app.
 
 The sample university (students, staff, courses, grades) is still seeded into
-the browser so every screen has data; its staff records are placeholders that
-cannot sign in. "Reset sample data" on the sign-in page restores the seed.
+the browser so every screen has data. Its staff records use placeholder
+`@signmeup.example` addresses and cannot sign in. "Reset sample data" on the
+sign-in page restores the seed.
 
-Local setup:
+#### Environment variables
+
+| Variable | Where | Purpose |
+|---|---|---|
+| `VITE_CLERK_PUBLISHABLE_KEY` | `.env.local`, Vercel | Clerk publishable key (`pk_test_…` / `pk_live_…`). Public by design. Required; without it the app shows a configuration error instead of a sign-in form. |
+| `VITE_ADMIN_EMAILS` | `.env.local`, Vercel | Optional. Comma-separated sdsu.edu addresses that become administrators on first sign-in. |
+| `CLERK_SECRET_KEY` | `.env.local` only | Written by `clerk env pull`; the app does not use it (no backend). Never commit it or add it to Vercel. |
+
+Both `VITE_` values are baked into the bundle at build time, so changing them
+on Vercel requires a redeploy.
+
+#### Local setup
 
 ```bash
-cp .env.example .env.local   # then paste the Clerk publishable key
-# or, with the Clerk CLI: clerk link && clerk env pull
+cp .env.example .env.local        # then paste the publishable key
+# or, with the Clerk CLI (https://clerk.com/docs/cli):
+clerk auth login
+clerk link --app app_3JhyENn4DgP4AcYl7riMq5k7nj3   # the "SignMeUp" application
+clerk env pull                    # writes VITE_CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY to .env.local
 ```
+
+Clerk's prebuilt UI is bundled from `@clerk/ui` rather than loaded from
+Clerk's CDN, so the sign-in form works wherever the app is served.
+
+#### Recreating the Clerk configuration
+
+If you set up a fresh Clerk application, the instance needs the same
+restrictions. With the CLI linked to it:
+
+```bash
+clerk api /allowlist_identifiers -d '{"identifier":"*@sdsu.edu","notify":false}' --yes
+clerk config patch --yes --json '{"auth_access_control":{"allowlist_enabled":true,"allowlist_blocklist_enforced_on_sign_in":true}}'
+clerk api /allowlist_identifiers      # verify the entry
+clerk doctor                          # verify the project wiring
+```
+
+In the Clerk Dashboard the same settings live under *Restrictions*: enable
+the allowlist and add the `sdsu.edu` domain.
+
+#### Deployment (Vercel)
+
+The site deploys from `main` to <https://signmeup-pi.vercel.app>. Set the two
+`VITE_` variables in the Vercel project (Production, Preview and Development)
+and redeploy after changing them:
+
+```bash
+vercel env add VITE_CLERK_PUBLISHABLE_KEY production
+vercel env add VITE_ADMIN_EMAILS production
+vercel redeploy <latest-production-deployment-url>
+```
+
+#### Current limits
+
+- The linked Clerk application only has a **development** instance, which is
+  free but has usage limits and shows a "Development mode" badge on the form.
+  Going to production needs a production instance with a domain, production
+  keys on Vercel, and a paid Clerk plan for the allowlist feature.
+- User records, roles and everything else still live in the browser's
+  `localStorage`. Roles granted under *Authorized users* therefore apply only
+  in the browser where they were granted until a shared backend exists.
 
 ```bash
 npm install
