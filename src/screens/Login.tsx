@@ -4,7 +4,7 @@ import { useStore } from '../data/store';
 import { FieldError } from '../components/ui';
 
 export default function Login() {
-  const { user, signIn, resetDemo } = useStore();
+  const { user, signIn, resetDemo, storage, saveError } = useStore();
   const nav = useNavigate();
   const loc = useLocation() as { state?: { from?: string } };
   const [id, setId] = useState('');
@@ -13,9 +13,9 @@ export default function Login() {
 
   if (user) return <Navigate to={user.mustChangePassword ? '/change-password' : loc.state?.from ?? '/'} replace />;
 
-  function submit(e: FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault();
-    const r = signIn(id, password);
+    const r = await signIn(id, password);
     if (r.ok) nav(loc.state?.from ?? '/', { replace: true });
     else setError(r);
   }
@@ -44,7 +44,9 @@ export default function Login() {
         </div>
         <div className="help" style={{ textAlign: 'center', lineHeight: 1.6 }}>
           Every transaction is recorded with your name, date and time.<br />
-          Prototype accounts (password <code>signmeup</code>): student 20231847 · advisor 30117 · faculty 28804 · administrator 10093.{' '}
+          Prototype accounts (password <code>signmeup</code>): student 20231847 · advisor 30117 · faculty 28804 · administrator 10093.
+          {' '}{storage === 'database' ? 'Records are stored in the shared course database.' : 'Records are stored in this browser until a database is connected.'}
+          {saveError ? ` ${saveError}` : ''}{' '}
           <button type="button" className="btn ghost sm" style={{ display: 'inline-flex', height: 22 }} onClick={resetDemo}>Reset sample data</button>
         </div>
       </form>

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createSeed } from './seed';
 import type { Db, NoteCategory, OutlineStatus, RegistrationType, Subsystem, User } from './types';
 import { nowIso } from '../lib/format';
@@ -16,11 +16,15 @@ function loadDb(): Db {
 }
 
 export type Result = { ok: true } | { ok: false; issues: EligibilityIssue[] };
+export type StorageMode = 'database' | 'browser';
+type SignInResult = { ok: true } | { ok: false; field: 'id' | 'password'; reason: string; requirement: string };
 
 interface StoreApi {
   db: Db;
   user: User | null;
-  signIn(id: string, password: string): { ok: true } | { ok: false; field: 'id' | 'password'; reason: string; requirement: string };
+  storage: StorageMode;
+  saveError: string | null;
+  signIn(id: string, password: string): Promise<SignInResult>;
   signOut(): void;
   changePassword(next: string): void;
   resetDemo(): void;
@@ -40,30 +44,118 @@ interface StoreApi {
 const Ctx = createContext<StoreApi | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [db, setDb] = useState<Db>(loadDb);
+  const [db, setDb] = useState<Db | null>(null);
+  const [ready, setReady] = useState(false);
+  const [storage, setStorage] = useState<StorageMode>('browser');
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(() => sessionStorage.getItem(SESSION_KEY));
+  const mode = useRef<StorageMode>('browser');
+  const hydrated = useRef(false);
+  const pauseSave = useRef(false);
 
-  useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); }, [db]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/db', { headers: { accept: 'application/json' } });
+        if (!res.ok) throw new Error(String(res.status));
+        const data = await res.json() as Db;
+        if (cancelled) return;
+        mode.current = 'database';
+        setStorage('database');
+        setDb(data);
+      } catch {
+        if (cancelled) return;
+        mode.current = 'browser';
+        setStorage('browser');
+        setDb(loadDb());
+      } finally {
+        if (!cancelled) setReady(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!ready || !db) return;
+    if (!hydrated.current) {
+      hydrated.current = true;
+      return;
+    }
+    if (pauseSave.current) {
+      pauseSave.current = false;
+      return;
+    }
+    if (mode.current === 'browser') {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      setSaveError(null);
+      fetch('/api/db', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify(db),
+      }).then(async (res) => {
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({})) as { error?: string };
+          throw new Error(payload.error || 'The database rejected the save.');
+        }
+      }).catch((err: unknown) => {
+        setSaveError(err instanceof Error ? err.message : 'Changes were not saved to the database.');
+      });
+    }, 200);
+    return () => window.clearTimeout(handle);
+  }, [db, ready]);
+
   useEffect(() => { if (userId) sessionStorage.setItem(SESSION_KEY, userId); else sessionStorage.removeItem(SESSION_KEY); }, [userId]);
 
-  const user = useMemo(() => db.users.find((u) => u.id === userId) ?? null, [db.users, userId]);
+  const user = useMemo(() => db?.users.find((u) => u.id === userId) ?? null, [db, userId]);
 
   const stamp = useCallback((d: Db, subsystem: Subsystem | 'FRAMEWORK', text: string, by?: string): Db => ({
     ...d, transactions: [...d.transactions, { at: nowIso(), by: by ?? user?.name ?? 'System', subsystem, text }],
   }), [user]);
 
-  const api: StoreApi = {
-    db, user,
+  if (!ready || !db) {
+    return <div className="login"><div className="help">Loading the course database…</div></div>;
+  }
 
-    signIn(id, password) {
+  const update = (fn: (current: Db) => Db) => {
+    setDb((current) => (current ? fn(current) : current));
+  };
+
+  const api: StoreApi = {
+    db, user, storage, saveError,
+
+    async signIn(id, password) {
       const clean = id.trim();
       if (!/^\d{5,8}$/.test(clean)) {
         return { ok: false, field: 'id', reason: 'ID not found.', requirement: 'Enter your 5- to 8-digit student or employee number, digits only.' };
       }
+      if (mode.current === 'database') {
+        try {
+          const res = await fetch('/api/auth', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', accept: 'application/json' },
+            body: JSON.stringify({ id: clean, password, at: nowIso() }),
+          });
+          const body = await res.json() as SignInResult;
+          if (!res.ok || !body.ok) return body.ok ? { ok: false, field: 'password', reason: 'Sign-in failed.', requirement: 'Try again.' } : body;
+          const nextRes = await fetch('/api/db', { headers: { accept: 'application/json' } });
+          if (!nextRes.ok) throw new Error('The course database did not reload.');
+          pauseSave.current = true;
+          setDb(await nextRes.json() as Db);
+          setUserId(clean);
+          return { ok: true };
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : 'The course database did not respond.';
+          return { ok: false, field: 'password', reason, requirement: 'Check the connection and try again.' };
+        }
+      }
       const u = db.users.find((x) => x.id === clean);
       if (!u) return { ok: false, field: 'id', reason: 'ID not found.', requirement: 'Enter the student or employee number issued to you.' };
       if (u.password !== password) return { ok: false, field: 'password', reason: 'Password does not match this ID.', requirement: 'Enter the current password for this ID, or ask a system administrator to reset it.' };
-      setDb((d) => stamp({ ...d, users: d.users.map((x) => (x.id === u.id ? { ...x, lastSignIn: nowIso() } : x)) }, 'FRAMEWORK', `Signed in`, u.name));
+      setDb((d) => d && stamp({ ...d, users: d.users.map((x) => (x.id === u.id ? { ...x, lastSignIn: nowIso() } : x)) }, 'FRAMEWORK', `Signed in`, u.name));
       setUserId(u.id);
       return { ok: true };
     },
@@ -72,10 +164,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     changePassword(next) {
       if (!user) return;
-      setDb((d) => stamp({ ...d, users: d.users.map((x) => (x.id === user.id ? { ...x, password: next, mustChangePassword: false, passwordSetAt: nowIso().slice(0, 10) } : x)) }, 'FRAMEWORK', 'Changed own password'));
+      update((d) => stamp({ ...d, users: d.users.map((x) => (x.id === user.id ? { ...x, password: next, mustChangePassword: false, passwordSetAt: nowIso().slice(0, 10) } : x)) }, 'FRAMEWORK', 'Changed own password'));
     },
 
-    resetDemo() { setDb(createSeed()); setUserId(null); },
+    resetDemo() {
+      const next = createSeed();
+      pauseSave.current = true;
+      setDb(next);
+      setUserId(null);
+      setSaveError(null);
+      if (mode.current === 'browser') {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        return;
+      }
+      void fetch('/api/db', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify(next),
+      }).then(async (res) => {
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({})) as { error?: string };
+          throw new Error(payload.error || 'The database rejected the reset.');
+        }
+      }).catch((err: unknown) => {
+        setSaveError(err instanceof Error ? err.message : 'Sample data was not saved to the database.');
+      });
+    },
 
     register(studentId, scheduleNo, type) {
       const student = db.students.find((s) => s.id === studentId);
@@ -84,18 +198,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const issues = registrationIssues(db, student, offering);
       if (issues.length) return { ok: false, issues };
       const by = user?.name ?? `${student.firstName} ${student.lastName}`;
-      setDb((d) => stamp({ ...d, registrations: [...d.registrations, { studentId, scheduleNo, type, registeredBy: by, registeredAt: nowIso() }] }, 'REG', `Registered ${offering.courseId} (${scheduleNo}) for ${student.firstName} ${student.lastName}`));
+      update((d) => stamp({ ...d, registrations: [...d.registrations, { studentId, scheduleNo, type, registeredBy: by, registeredAt: nowIso() }] }, 'REG', `Registered ${offering.courseId} (${scheduleNo}) for ${student.firstName} ${student.lastName}`));
       return { ok: true };
     },
 
     drop(studentId, scheduleNo) {
       const offering = db.offerings.find((o) => o.scheduleNo === scheduleNo);
-      setDb((d) => stamp({ ...d, registrations: d.registrations.filter((r) => !(r.studentId === studentId && r.scheduleNo === scheduleNo)) }, 'REG', `Dropped ${offering?.courseId ?? scheduleNo} (${scheduleNo})`));
+      update((d) => stamp({ ...d, registrations: d.registrations.filter((r) => !(r.studentId === studentId && r.scheduleNo === scheduleNo)) }, 'REG', `Dropped ${offering?.courseId ?? scheduleNo} (${scheduleNo})`));
     },
 
     requestWaiver(studentId, courseId, note) {
       const at = nowIso();
-      setDb((d) => stamp({
+      update((d) => stamp({
         ...d,
         students: d.students.map((s) => (s.id === studentId ? { ...s, notes: [...s.notes, { at, byEmployeeId: user?.id ?? studentId, category: 'advising', text: `Waiver requested for ${courseId}. ${note}`.trim() }] } : s)),
       }, 'REG', `Requested advisor waiver for ${courseId}`));
@@ -103,7 +217,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     appendNote(studentId, category, text) {
       const at = nowIso();
-      setDb((d) => stamp({
+      update((d) => stamp({
         ...d,
         students: d.students.map((s) => (s.id === studentId ? { ...s, notes: [...s.notes, { at, byEmployeeId: user?.id ?? '0', category, text }] } : s)),
       }, 'ER', `Appended ${category} note to student ${studentId}`));
@@ -112,7 +226,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setOutlineStatus(studentId, courseId, status, note) {
       const at = nowIso();
       const by = user?.name ?? 'System';
-      setDb((d) => stamp({
+      update((d) => stamp({
         ...d,
         outlines: d.outlines.map((o) => {
           if (o.studentId !== studentId) return o;
@@ -130,7 +244,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     addOutlineCourse(studentId, courseId) {
       const at = nowIso();
       const by = user?.name ?? 'System';
-      setDb((d) => stamp({
+      update((d) => stamp({
         ...d,
         outlines: d.outlines.map((o) => (o.studentId !== studentId || o.entries.some((e) => e.courseId === courseId) ? o : {
           ...o,
@@ -145,7 +259,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const offering = db.offerings.find((o) => o.scheduleNo === scheduleNo);
       const instructorUser = db.users.find((u) => u.facultyId === offering?.instructorId);
       const byOther = user && instructorUser && user.id !== instructorUser.id;
-      setDb((d) => stamp({
+      update((d) => stamp({
         ...d,
         registrations: d.registrations.map((r) => (r.scheduleNo === scheduleNo && r.studentId === studentId
           ? { ...r, grade: grade || undefined, gradeNote: note ?? r.gradeNote, ...(byOther ? { gradeUpdatedBy: user!.name, gradeUpdatedAt: nowIso() } : {}) }
@@ -154,12 +268,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
 
     addGradeNote(scheduleNo, text) {
-      setDb((d) => stamp({ ...d, gradeNotes: [...d.gradeNotes, { scheduleNo, at: nowIso(), by: user?.name ?? 'System', text }] }, 'GRADE', `Added general note to ${scheduleNo}`));
+      update((d) => stamp({ ...d, gradeNotes: [...d.gradeNotes, { scheduleNo, at: nowIso(), by: user?.name ?? 'System', text }] }, 'GRADE', `Added general note to ${scheduleNo}`));
     },
 
     resetPassword(userId, temporary, mustChange) {
       const target = db.users.find((u) => u.id === userId);
-      setDb((d) => stamp({ ...d, users: d.users.map((u) => (u.id === userId ? { ...u, password: temporary, mustChangePassword: mustChange, passwordSetAt: nowIso().slice(0, 10) } : u)) }, 'FRAMEWORK', `Reset password for ${target?.name ?? userId} (${userId})`));
+      update((d) => stamp({ ...d, users: d.users.map((u) => (u.id === userId ? { ...u, password: temporary, mustChangePassword: mustChange, passwordSetAt: nowIso().slice(0, 10) } : u)) }, 'FRAMEWORK', `Reset password for ${target?.name ?? userId} (${userId})`));
     },
 
     addUser(u) {
@@ -167,12 +281,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (db.users.some((x) => x.id === u.id)) return { ok: false, reason: `Employee number ${u.id} already exists.`, requirement: 'Enter a number that is not assigned to another user.' };
       if (!u.name.trim()) return { ok: false, reason: 'Name is required.', requirement: 'Enter the user’s full name; hyphenated names are accepted.' };
       if (u.password.length < 12) return { ok: false, reason: 'Temporary password is too short.', requirement: 'Use at least 12 characters with a letter, a number and a symbol.' };
-      setDb((d) => stamp({ ...d, users: [...d.users, { ...u, mustChangePassword: true, passwordSetAt: nowIso().slice(0, 10) }] }, 'FRAMEWORK', `Added user ${u.name} (${u.id})`));
+      update((d) => stamp({ ...d, users: [...d.users, { ...u, mustChangePassword: true, passwordSetAt: nowIso().slice(0, 10) }] }, 'FRAMEWORK', `Added user ${u.name} (${u.id})`));
       return { ok: true };
     },
 
     updateUserAccess(userId, access) {
-      setDb((d) => stamp({ ...d, users: d.users.map((u) => (u.id === userId ? { ...u, access } : u)) }, 'FRAMEWORK', `Updated access areas for ${userId}: ${access.join(', ') || 'none'}`));
+      update((d) => stamp({ ...d, users: d.users.map((u) => (u.id === userId ? { ...u, access } : u)) }, 'FRAMEWORK', `Updated access areas for ${userId}: ${access.join(', ') || 'none'}`));
     },
   };
 

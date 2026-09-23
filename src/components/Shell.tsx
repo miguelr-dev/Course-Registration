@@ -9,7 +9,7 @@ const ShellContext = createContext<ShellCtx>({ toast: () => {} });
 export const useToast = () => useContext(ShellContext).toast;
 
 export function Shell({ children, panel, helpKey, screen }: { children: ReactNode; panel?: ReactNode; helpKey: keyof typeof HELP; screen: string }) {
-  const { user, signOut } = useStore();
+  const { user, signOut, storage, saveError } = useStore();
   const [help, setHelp] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -44,7 +44,7 @@ export function Shell({ children, panel, helpKey, screen }: { children: ReactNod
           <HeaderActionsContext.Provider value={{ openHelp: () => setHelp(true) }}>
             {children}
           </HeaderActionsContext.Provider>
-          <div className="foot"><span>{screen}</span><span>SignMeUp · CS 532 prototype</span></div>
+          <div className="foot"><span>{screen}</span><span>SignMeUp · {storage === 'database' ? 'shared database' : 'this browser'}{saveError ? ' · save failed' : ''}</span></div>
         </div>
         {panel}
         {help && (

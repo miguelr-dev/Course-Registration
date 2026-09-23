@@ -58,11 +58,14 @@ Course-Registration/
 
 ## The prototype
 
-A React + TypeScript single-page app (Vite). Data lives in the browser
-(`localStorage`) and is seeded with a small sample university, so every screen
-is functional without a backend: registration rules are enforced, notes and
-outline history are append-only, grades update statistics live, and every
-transaction is labeled with the user's name, date and time.
+A React + TypeScript single-page app (Vite). With `DATABASE_URL` set, every
+screen reads and writes a Postgres database (the schema is in
+[`db/schema.sql`](db/schema.sql)). The first request creates the tables and
+loads the sample university. Without that variable the app keeps working from
+`localStorage`. Registration rules are enforced, notes and outline history are
+append-only, grades update statistics live, and every transaction is labeled
+with the user's name, date and time. Passwords stay in the database and are
+not sent back to the browser.
 
 | Screen | Route | Who |
 |---|---|---|
@@ -86,6 +89,20 @@ npm test           # unit tests for the rules
 npm run typecheck
 npm run build
 ```
+
+## Database
+
+Use the Postgres project you already have (Neon, Supabase, or Vercel Postgres).
+Put its connection string in `.env` locally and in the Vercel project's
+environment as `DATABASE_URL`, then redeploy.
+
+```bash
+cp .env.example .env
+# DATABASE_URL=postgresql://user:password@host/dbname?sslmode=require
+```
+
+`GET /api/db` returns the university. `PUT /api/db` saves it. `POST /api/auth`
+checks a password. The live app is [signmeup-pi.vercel.app](https://signmeup-pi.vercel.app).
 
 Design: the chosen direction and Claude Design prompt are in
 [docs/DESIGN-HANDOFF.md](docs/DESIGN-HANDOFF.md).
