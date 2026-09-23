@@ -1,11 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useClerk, useSession, useUser } from '@clerk/react';
 import { createSeed } from './seed';
 import type { Db, NoteCategory, OutlineStatus, RegistrationType, Subsystem, User } from './types';
 import { nowIso } from '../lib/format';
 import { registrationIssues, type EligibilityIssue } from '../lib/rules';
+import { adminEmails, isAllowedEmail, provisionUser } from '../lib/auth';
 
-const STORAGE_KEY = 'signmeup.db.v1';
-const SESSION_KEY = 'signmeup.session.v1';
+const STORAGE_KEY = 'signmeup.db.v2';
+const STAMP_KEY = 'signmeup.stamped.v2';
 
 function loadDb(): Db {
   try {
@@ -17,12 +19,18 @@ function loadDb(): Db {
 
 export type Result = { ok: true } | { ok: false; issues: EligibilityIssue[] };
 
+/** What Clerk knows about the browser session, independent of the SignMeUp user record. */
+export interface Session {
+  ready: boolean; // Clerk has loaded and we know whether someone is signed in
+  email: string | null; // primary address of the signed-in Clerk user, lower-cased
+  denied: boolean; // signed in, but the address is outside the allowed domain
+}
+
 interface StoreApi {
   db: Db;
   user: User | null;
-  signIn(id: string, password: string): { ok: true } | { ok: false; field: 'id' | 'password'; reason: string; requirement: string };
+  session: Session;
   signOut(): void;
-  changePassword(next: string): void;
   resetDemo(): void;
   register(studentId: string, scheduleNo: string, type: RegistrationType): Result;
   drop(studentId: string, scheduleNo: string): void;
@@ -32,8 +40,7 @@ interface StoreApi {
   addOutlineCourse(studentId: string, courseId: string): void;
   setGrade(scheduleNo: string, studentId: string, grade: string, note?: string): void;
   addGradeNote(scheduleNo: string, text: string): void;
-  resetPassword(userId: string, temporary: string, mustChange: boolean): void;
-  addUser(u: Omit<User, 'mustChangePassword' | 'passwordSetAt'>): { ok: true } | { ok: false; reason: string; requirement: string };
+  addUser(u: Omit<User, 'lastSignIn' | 'clerkUserId'>): { ok: true } | { ok: false; reason: string; requirement: string };
   updateUserAccess(userId: string, access: Subsystem[]): void;
 }
 
@@ -41,41 +48,62 @@ const Ctx = createContext<StoreApi | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [db, setDb] = useState<Db>(loadDb);
-  const [userId, setUserId] = useState<string | null>(() => sessionStorage.getItem(SESSION_KEY));
+  const clerk = useClerk();
+  const { isLoaded, isSignedIn, user: clerkUser } = useUser();
+  const { session: clerkSession } = useSession();
 
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); }, [db]);
-  useEffect(() => { if (userId) sessionStorage.setItem(SESSION_KEY, userId); else sessionStorage.removeItem(SESSION_KEY); }, [userId]);
 
-  const user = useMemo(() => db.users.find((u) => u.id === userId) ?? null, [db.users, userId]);
+  const email = clerkUser?.primaryEmailAddress?.emailAddress.trim().toLowerCase() ?? null;
+  const denied = !!email && !isAllowedEmail(email);
+  const session: Session = { ready: isLoaded, email, denied };
+  const user = useMemo(() => (email && !denied ? db.users.find((u) => u.email.toLowerCase() === email) ?? null : null), [db.users, email, denied]);
+
+  // Once per Clerk session: stamp the sign-in, and on a first sign-in create the SignMeUp user (plus a student record).
+  const clerkUserId = clerkUser?.id ?? null;
+  const clerkName = [clerkUser?.firstName, clerkUser?.lastName].filter(Boolean).join(' ');
+  const sessionId = clerkSession?.id ?? null;
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || !email || !clerkUserId || !sessionId || denied) return;
+    if (sessionStorage.getItem(STAMP_KEY) === sessionId) return;
+    sessionStorage.setItem(STAMP_KEY, sessionId);
+    const at = nowIso();
+    setDb((d) => {
+      const existing = d.users.find((u) => u.email.toLowerCase() === email);
+      if (existing) {
+        return {
+          ...d,
+          users: d.users.map((u) => (u.id === existing.id ? { ...u, lastSignIn: at, clerkUserId } : u)),
+          transactions: [...d.transactions, { at, by: existing.name, subsystem: 'FRAMEWORK', text: 'Signed in' }],
+        };
+      }
+      const admin = adminEmails(import.meta.env.VITE_ADMIN_EMAILS as string | undefined).includes(email);
+      const created = provisionUser(d, { email, name: clerkName, clerkUserId, admin });
+      return {
+        ...created.db,
+        users: created.db.users.map((u) => (u.id === created.user.id ? { ...u, lastSignIn: at } : u)),
+        transactions: [
+          ...created.db.transactions,
+          { at, by: created.user.name, subsystem: 'FRAMEWORK', text: `Created ${admin ? 'administrator' : 'student'} account for ${email}` },
+          { at, by: created.user.name, subsystem: 'FRAMEWORK', text: 'Signed in' },
+        ],
+      };
+    });
+  }, [isLoaded, isSignedIn, email, clerkUserId, clerkName, sessionId, denied]);
 
   const stamp = useCallback((d: Db, subsystem: Subsystem | 'FRAMEWORK', text: string, by?: string): Db => ({
     ...d, transactions: [...d.transactions, { at: nowIso(), by: by ?? user?.name ?? 'System', subsystem, text }],
   }), [user]);
 
   const api: StoreApi = {
-    db, user,
+    db, user, session,
 
-    signIn(id, password) {
-      const clean = id.trim();
-      if (!/^\d{5,8}$/.test(clean)) {
-        return { ok: false, field: 'id', reason: 'ID not found.', requirement: 'Enter your 5- to 8-digit student or employee number, digits only.' };
-      }
-      const u = db.users.find((x) => x.id === clean);
-      if (!u) return { ok: false, field: 'id', reason: 'ID not found.', requirement: 'Enter the student or employee number issued to you.' };
-      if (u.password !== password) return { ok: false, field: 'password', reason: 'Password does not match this ID.', requirement: 'Enter the current password for this ID, or ask a system administrator to reset it.' };
-      setDb((d) => stamp({ ...d, users: d.users.map((x) => (x.id === u.id ? { ...x, lastSignIn: nowIso() } : x)) }, 'FRAMEWORK', `Signed in`, u.name));
-      setUserId(u.id);
-      return { ok: true };
+    signOut() { void clerk.signOut({ redirectUrl: '/login' }); },
+
+    resetDemo() {
+      if (!confirm('Reset the sample data? Registrations, notes and grades entered in this browser are discarded.')) return;
+      setDb(createSeed());
     },
-
-    signOut() { setUserId(null); },
-
-    changePassword(next) {
-      if (!user) return;
-      setDb((d) => stamp({ ...d, users: d.users.map((x) => (x.id === user.id ? { ...x, password: next, mustChangePassword: false, passwordSetAt: nowIso().slice(0, 10) } : x)) }, 'FRAMEWORK', 'Changed own password'));
-    },
-
-    resetDemo() { setDb(createSeed()); setUserId(null); },
 
     register(studentId, scheduleNo, type) {
       const student = db.students.find((s) => s.id === studentId);
@@ -157,17 +185,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setDb((d) => stamp({ ...d, gradeNotes: [...d.gradeNotes, { scheduleNo, at: nowIso(), by: user?.name ?? 'System', text }] }, 'GRADE', `Added general note to ${scheduleNo}`));
     },
 
-    resetPassword(userId, temporary, mustChange) {
-      const target = db.users.find((u) => u.id === userId);
-      setDb((d) => stamp({ ...d, users: d.users.map((u) => (u.id === userId ? { ...u, password: temporary, mustChangePassword: mustChange, passwordSetAt: nowIso().slice(0, 10) } : u)) }, 'FRAMEWORK', `Reset password for ${target?.name ?? userId} (${userId})`));
-    },
-
     addUser(u) {
+      const email = u.email.trim().toLowerCase();
       if (!/^\d{5,8}$/.test(u.id)) return { ok: false, reason: 'Employee number is not valid.', requirement: 'Enter 5 to 8 digits, no letters or spaces.' };
       if (db.users.some((x) => x.id === u.id)) return { ok: false, reason: `Employee number ${u.id} already exists.`, requirement: 'Enter a number that is not assigned to another user.' };
       if (!u.name.trim()) return { ok: false, reason: 'Name is required.', requirement: 'Enter the user’s full name; hyphenated names are accepted.' };
-      if (u.password.length < 12) return { ok: false, reason: 'Temporary password is too short.', requirement: 'Use at least 12 characters with a letter, a number and a symbol.' };
-      setDb((d) => stamp({ ...d, users: [...d.users, { ...u, mustChangePassword: true, passwordSetAt: nowIso().slice(0, 10) }] }, 'FRAMEWORK', `Added user ${u.name} (${u.id})`));
+      if (!isAllowedEmail(email)) return { ok: false, reason: 'Email address is not an SDSU address.', requirement: 'Enter the person’s @sdsu.edu address; that is what they sign in with.' };
+      if (db.users.some((x) => x.email.toLowerCase() === email)) return { ok: false, reason: `${email} is already assigned to another user.`, requirement: 'Enter an address that no other user has.' };
+      setDb((d) => stamp({ ...d, users: [...d.users, { ...u, email }] }, 'FRAMEWORK', `Added user ${u.name} (${u.id}) for ${email}`));
       return { ok: true };
     },
 

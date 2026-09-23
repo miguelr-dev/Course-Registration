@@ -7,15 +7,14 @@ export type NoteCategory = 'advising' | 'commendation' | 'issue' | 'special-need
 export interface User {
   id: string; // student ID or employee number
   name: string;
+  email: string; // the sdsu.edu address this person signs in with (Clerk)
   jobTitle: string;
-  password: string; // prototype only: plain text, never shown
-  mustChangePassword: boolean;
-  passwordSetAt: string;
   role: Role;
   access: Subsystem[];
   lastSignIn?: string;
   studentId?: string;
   facultyId?: string;
+  clerkUserId?: string;
 }
 
 export interface Department { id: string; name: string; }

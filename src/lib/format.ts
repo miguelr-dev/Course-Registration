@@ -13,6 +13,7 @@ export function formatDateTime(iso: string): string {
 
 /** "2026-09-12" → "Sep 12, 2026" */
 export function formatDate(iso: string): string {
+  if (!iso) return '—';
   const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
   if (!y || !m || !d) return iso;
   return `${MONTHS[m - 1]} ${d}, ${y}`;

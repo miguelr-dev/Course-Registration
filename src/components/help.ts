@@ -5,8 +5,8 @@ export interface HelpTopic { title: string; summary: string; fields: [string, st
 /** Context-sensitive help: one topic per screen, with field-level notes and whether each field is mandatory. */
 export const HELP: Record<string, HelpTopic> = {
   login: {
-    title: 'Sign in', summary: 'Enter the student or employee number issued to you and your password. Every transaction you complete afterwards is recorded with your name, date and time. A system administrator can reset a forgotten password; passwords are never shown or printed.',
-    fields: [['ID', 'Mandatory. 5 to 8 digits, no letters or spaces.'], ['Password', 'Mandatory. Case-sensitive.']],
+    title: 'Sign in', summary: 'Sign in with your SDSU email address. Anyone with an @sdsu.edu address can create an account; other addresses are refused. New accounts start as students; an administrator can widen access from Authorized Users. Every transaction you complete afterwards is recorded with your name, date and time.',
+    fields: [['Email', 'Mandatory. Must end in @sdsu.edu.'], ['Password', 'Mandatory. Managed by the sign-in service; use "Forgot password" on the sign-in page to reset it.']],
   },
   dashboard: {
     title: 'Student dashboard', summary: 'Your schedule for the current term, your running units total, and the major courses you can register for right now: on your approved outline, prerequisites completed, and seats still open. Register one course at a time.',
@@ -33,8 +33,8 @@ export const HELP: Record<string, HelpTopic> = {
     fields: [['Grade', 'Letter grade, CR/NC or AU depending on the registration type.'], ['Note', 'Optional. Attached to that student’s grade.'], ['General notes', 'Optional. Notes about the course not tied to a student.']],
   },
   users: {
-    title: 'Authorized users', summary: 'Maintain who can sign in and which subsystems each user can reach. Reset or initialize passwords here. The printed user report includes every field except passwords.',
-    fields: [['Employee number', 'Mandatory. 5 to 8 digits; students use their student ID.'], ['Job title', 'Mandatory.'], ['Access areas', 'Mandatory. At least one subsystem.'], ['Temporary password', 'Mandatory on reset. At least 12 characters with a letter, a number and a symbol.']],
+    title: 'Authorized users', summary: 'Maintain who can use SignMeUp and which subsystems each user can reach. Passwords are handled by the sign-in service and are never stored, shown or printed here; users reset their own from the sign-in page. Adding a user with an @sdsu.edu address assigns that role the first time the address signs in.',
+    fields: [['Employee number', 'Mandatory. 5 to 8 digits; students use their student ID.'], ['Email', 'Mandatory. An @sdsu.edu address not already assigned.'], ['Job title', 'Mandatory.'], ['Access areas', 'Mandatory. At least one subsystem.']],
   },
 };
 

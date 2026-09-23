@@ -15,17 +15,18 @@ export function createSeed(): Db {
       { id: 'PHYS', name: 'Physics' },
       { id: 'ENGL', name: 'English' },
       { id: 'HIST', name: 'History' },
+      { id: 'UNIV', name: 'University (undeclared)' },
     ],
 
     users: [
-      { id: '10093', name: 'Kenji Ibarra-Novak', jobTitle: 'Registrar, System administrator', password: 'signmeup', mustChangePassword: false, passwordSetAt: '2026-01-06', role: 'admin', access: ['ER', 'REG', 'MAJOR', 'FCI', 'GRADE', 'USERS'], lastSignIn: '2026-09-15T08:55:00' },
-      { id: '30117', name: 'Rosa Delgado-Munoz', jobTitle: 'Major advisor, Computer Science', password: 'signmeup', mustChangePassword: false, passwordSetAt: '2026-02-11', role: 'advisor', access: ['ER', 'REG', 'MAJOR', 'FCI'], lastSignIn: '2026-09-15T09:10:00', facultyId: 'F-10510' },
-      { id: '28804', name: 'Daniel Nakamura', jobTitle: 'Professor, Computer Science', password: 'signmeup', mustChangePassword: false, passwordSetAt: '2026-01-06', role: 'faculty', access: ['FCI', 'GRADE'], lastSignIn: '2026-09-14T16:32:00', facultyId: 'F-10231' },
-      { id: '27310', name: 'Lena Hwang-Baptiste', jobTitle: 'Associate Professor, Mathematics', password: 'signmeup', mustChangePassword: false, passwordSetAt: '2026-03-02', role: 'faculty', access: ['FCI', 'GRADE'], lastSignIn: '2026-09-12T13:05:00', facultyId: 'F-10422' },
-      { id: '31855', name: 'Samuel Okonkwo', jobTitle: 'Lecturer, Biology', password: 'signmeup', mustChangePassword: true, passwordSetAt: '2026-09-15', role: 'faculty', access: ['FCI', 'GRADE'], lastSignIn: '2026-09-11T10:48:00', facultyId: 'F-11290' },
-      { id: '41208', name: 'Priya Anand-Whitfield', jobTitle: 'Disability Services coordinator', password: 'signmeup', mustChangePassword: false, passwordSetAt: '2026-05-20', role: 'registrar', access: ['ER'], lastSignIn: '2026-09-09T14:20:00' },
-      { id: '20231847', name: 'Maria Okafor-Reyes', jobTitle: 'Student', password: 'signmeup', mustChangePassword: false, passwordSetAt: '2025-08-20', role: 'student', access: ['ER', 'REG', 'MAJOR', 'FCI'], lastSignIn: '2026-09-12T14:38:00', studentId: '20231847' },
-      { id: '20230419', name: 'Tomás Bravo', jobTitle: 'Student', password: 'signmeup', mustChangePassword: false, passwordSetAt: '2025-08-20', role: 'student', access: ['ER', 'REG', 'MAJOR', 'FCI'], lastSignIn: '2026-09-10T11:02:00', studentId: '20230419' },
+      { id: '10093', name: 'Kenji Ibarra-Novak', email: 'kibarra-novak@signmeup.example', jobTitle: 'Registrar, System administrator', role: 'admin', access: ['ER', 'REG', 'MAJOR', 'FCI', 'GRADE', 'USERS'], lastSignIn: '2026-09-15T08:55:00' },
+      { id: '30117', name: 'Rosa Delgado-Munoz', email: 'rdelgado-munoz@signmeup.example', jobTitle: 'Major advisor, Computer Science', role: 'advisor', access: ['ER', 'REG', 'MAJOR', 'FCI'], lastSignIn: '2026-09-15T09:10:00', facultyId: 'F-10510' },
+      { id: '28804', name: 'Daniel Nakamura', email: 'dnakamura@signmeup.example', jobTitle: 'Professor, Computer Science', role: 'faculty', access: ['FCI', 'GRADE'], lastSignIn: '2026-09-14T16:32:00', facultyId: 'F-10231' },
+      { id: '27310', name: 'Lena Hwang-Baptiste', email: 'lhwang-baptiste@signmeup.example', jobTitle: 'Associate Professor, Mathematics', role: 'faculty', access: ['FCI', 'GRADE'], lastSignIn: '2026-09-12T13:05:00', facultyId: 'F-10422' },
+      { id: '31855', name: 'Samuel Okonkwo', email: 'sokonkwo@signmeup.example', jobTitle: 'Lecturer, Biology', role: 'faculty', access: ['FCI', 'GRADE'], lastSignIn: '2026-09-11T10:48:00', facultyId: 'F-11290' },
+      { id: '41208', name: 'Priya Anand-Whitfield', email: 'panand-whitfield@signmeup.example', jobTitle: 'Disability Services coordinator', role: 'registrar', access: ['ER'], lastSignIn: '2026-09-09T14:20:00' },
+      { id: '20231847', name: 'Maria Okafor-Reyes', email: 'mokafor-reyes@signmeup.example', jobTitle: 'Student', role: 'student', access: ['ER', 'REG', 'MAJOR', 'FCI'], lastSignIn: '2026-09-12T14:38:00', studentId: '20231847' },
+      { id: '20230419', name: 'Tomás Bravo', email: 'tbravo@signmeup.example', jobTitle: 'Student', role: 'student', access: ['ER', 'REG', 'MAJOR', 'FCI'], lastSignIn: '2026-09-10T11:02:00', studentId: '20230419' },
     ],
 
     faculty: [
@@ -132,6 +133,7 @@ export function createSeed(): Db {
 
     majors: [
       { id: 'CS-BS', title: 'Computer Science, B.S.', deptId: 'CS', unitsRequired: 120, majorUnits: 72, requiredCourses: ['CS 101', 'CS 201', 'CS 210', 'CS 250', 'CS 310', 'CS 320', 'CS 335', 'CS 351', 'MATH 150', 'MATH 151', 'MATH 240', 'MATH 310', 'PHYS 110', 'CS 375'], electives: ['CS 360', 'MATH 320', 'CS 520'], advisors: ['30117'] },
+      { id: 'UNDECLARED', title: 'Undeclared', deptId: 'UNIV', unitsRequired: 120, majorUnits: 0, requiredCourses: [], electives: [], advisors: ['30117'] },
       { id: 'MATH-MIN', title: 'Mathematics minor', deptId: 'MATH', unitsRequired: 20, majorUnits: 20, requiredCourses: ['MATH 150', 'MATH 151', 'MATH 240'], electives: ['MATH 310', 'MATH 320'], advisors: ['27310'] },
     ],
 

@@ -46,6 +46,7 @@ Course-Registration/
 │   ├── REQUIREMENTS.md       # full project requirements (markdown)
 │   ├── DESIGN-HANDOFF.md     # UI direction, design canvas link, Claude Design prompt
 │   └── CourseRegReqs.docx    # original requirements document
+├── .env.example              # Clerk publishable key + optional admin list
 ├── src/
 │   ├── data/                 # types, sample data seed, in-browser store
 │   ├── lib/                  # registration rules, GPA/statistics, wildcard search, formatting
@@ -66,18 +67,36 @@ transaction is labeled with the user's name, date and time.
 
 | Screen | Route | Who |
 |---|---|---|
-| Sign in / forced password change | `/login`, `/change-password` | everyone |
+| Sign in / create account (Clerk, @sdsu.edu only) | `/login`, `/sign-up` | everyone |
 | Student dashboard (schedule, eligible major courses) | `/` | students |
 | Course search & registration | `/search` | students |
 | Electronic student record + append-only notes | `/record` | students (own), advisors, registrar |
 | Approved major outline + change history | `/outline` | students (own), advisors |
 | Faculty & course information | `/faculty` | everyone with FCI access |
 | Grade sheet + course statistics | `/grades` | primary instructor, registrar |
-| Authorized users + password reset | `/users` | system administrators |
+| Authorized users + access areas | `/users` | system administrators |
 
-Sample accounts (password `signmeup`): student **20231847**, advisor **30117**,
-faculty **28804**, administrator **10093**. "Reset sample data" on the sign-in
-page restores the seed.
+### Signing in
+
+Authentication is handled by [Clerk](https://clerk.com). Anyone with an
+**@sdsu.edu** address can create an account and sign in; the Clerk instance's
+allowlist refuses every other domain, and the app checks the domain again
+before it lets a session through. A new address gets a student account with an
+empty record on first sign-in. An administrator can add a person from
+*Authorized users* with their SDSU email and the access areas they should have;
+that role applies the first time the address signs in. Addresses listed in
+`VITE_ADMIN_EMAILS` become administrators automatically.
+
+The sample university (students, staff, courses, grades) is still seeded into
+the browser so every screen has data; its staff records are placeholders that
+cannot sign in. "Reset sample data" on the sign-in page restores the seed.
+
+Local setup:
+
+```bash
+cp .env.example .env.local   # then paste the Clerk publishable key
+# or, with the Clerk CLI: clerk link && clerk env pull
+```
 
 ```bash
 npm install
