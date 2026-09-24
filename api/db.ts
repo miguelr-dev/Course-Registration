@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { authenticate, AuthError } from './_lib/auth';
-import { readState, StateError, writeState } from './_lib/state';
-import { adminEmails } from '../src/lib/auth';
-import { validateWrite } from '../src/lib/sync-rules';
-import type { Db } from '../src/data/types';
+import { authenticate, AuthError } from './_lib/auth.js';
+import { readState, StateError, writeState } from './_lib/state.js';
+import { adminEmails } from '../src/lib/auth.js';
+import { validateWrite } from '../src/lib/sync-rules.js';
+import type { Db } from '../src/data/types.js';
 
 /**
  * GET  /api/db            -> { version, db }            (db is null until the first write seeds it)

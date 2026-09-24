@@ -1,4 +1,4 @@
-import type { Db, Student, Subsystem, User } from '../data/types';
+import type { Db, Student, Subsystem, User } from '../data/types.js';
 
 /** Email domains allowed to create an account and sign in. Enforced here and by the Clerk allowlist. */
 export const ALLOWED_DOMAINS = ['sdsu.edu'];

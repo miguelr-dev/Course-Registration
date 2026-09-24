@@ -1,5 +1,5 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
-import { isAllowedEmail } from '../../src/lib/auth';
+import { isAllowedEmail } from '../../src/lib/auth.js';
 
 export interface Caller { sub: string; email: string; }
 

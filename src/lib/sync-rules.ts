@@ -1,5 +1,5 @@
-import type { Db, User } from '../data/types';
-import { ALL_ACCESS, STUDENT_ACCESS } from './auth';
+import type { Db, User } from '../data/types.js';
+import { ALL_ACCESS, STUDENT_ACCESS } from './auth.js';
 
 /**
  * Server-side guard for writes to the shared document. Any signed-in SDSU user may

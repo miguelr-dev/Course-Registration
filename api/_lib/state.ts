@@ -1,5 +1,5 @@
 import postgres from 'postgres';
-import type { Db } from '../../src/data/types';
+import type { Db } from '../../src/data/types.js';
 
 /** One row holds the whole SignMeUp document; `version` makes writes compare-and-set. */
 export interface Stored { version: number; doc: Db; updatedAt: string; updatedBy: string | null; }
