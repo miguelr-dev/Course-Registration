@@ -1,5 +1,6 @@
 import postgres from 'postgres';
 import type { Db } from '../../src/data/types.js';
+import { SCHEMA_SQL } from './schema.js';
 
 /** One row holds the whole SignMeUp document; `version` makes writes compare-and-set. */
 export interface Stored { version: number; doc: Db; updatedAt: string; updatedBy: string | null; }
@@ -17,15 +18,28 @@ function client() {
   return sql;
 }
 
+/**
+ * First connection from this function instance: make sure the document table exists, then apply
+ * the full relational schema from db/schema.sql (idempotent: create-if-not-exists everywhere).
+ * A schema failure is logged but does not block the document store.
+ */
 async function ensureTable() {
-  ready ??= client()`
-    create table if not exists signmeup_state (
-      id text primary key,
-      version integer not null default 0,
-      doc jsonb not null,
-      updated_at timestamptz not null default now(),
-      updated_by text
-    )`.then(() => undefined);
+  ready ??= (async () => {
+    const s = client();
+    await s`
+      create table if not exists signmeup_state (
+        id text primary key,
+        version integer not null default 0,
+        doc jsonb not null,
+        updated_at timestamptz not null default now(),
+        updated_by text
+      )`;
+    try {
+      await s.unsafe(SCHEMA_SQL);
+    } catch (err) {
+      console.error('Applying db/schema.sql failed (document store still works):', err);
+    }
+  })();
   await ready;
 }
 
