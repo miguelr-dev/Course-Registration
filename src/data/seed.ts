@@ -1,4 +1,15 @@
 import type { Db } from './types';
+import { HELP } from '../components/help';
+
+/** User-maintained value lists for entry fields (GEN-11, GEN-12). Administrators can extend these in the database. */
+export const VALUE_LISTS: Record<string, string[]> = {
+  grades: ['A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'F', 'I', 'CR', 'NC', 'AU'],
+  noteCategories: ['advising', 'commendation', 'issue', 'special-need'],
+  registrationTypes: ['letter', 'crnc', 'audit'],
+  outlineStatuses: ['approved', 'dropped', 'waived'],
+  subsystems: ['ER', 'REG', 'MAJOR', 'FCI', 'GRADE', 'USERS'],
+  roles: ['student', 'faculty', 'advisor', 'registrar', 'admin'],
+};
 
 const T = '2026-09-12T14:41:00';
 
@@ -180,6 +191,8 @@ export function createSeed(): Db {
       },
     ],
 
+    valueLists: VALUE_LISTS,
+    helpTopics: HELP,
     gradeNotes: [],
     transactions: [
       { at: '2026-08-28T11:02:00', by: 'Rosa Delgado-Munoz', subsystem: 'MAJOR', text: 'Approved outline for Maria Okafor-Reyes (20231847)' },

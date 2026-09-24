@@ -7,14 +7,17 @@ import { nowIso } from '../lib/format';
 import { registrationIssues, type EligibilityIssue } from '../lib/rules';
 import { adminEmails, isAllowedEmail, provisionUser } from '../lib/auth';
 
-const STORAGE_KEY = 'signmeup.db.v3'; // local cache of the shared document (and the whole store when the API is unavailable)
-const STAMP_KEY = 'signmeup.stamped.v3';
+const STORAGE_KEY = 'signmeup.db.v4'; // local cache of the shared document (and the whole store when the API is unavailable)
+const STAMP_KEY = 'signmeup.stamped.v4';
 const POLL_MS = 15000;
 
 function loadDb(): Db {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as Db;
+    if (raw) {
+      const parsed = JSON.parse(raw) as Db;
+      return { ...parsed, valueLists: parsed.valueLists ?? {}, helpTopics: parsed.helpTopics ?? {} };
+    }
   } catch { /* fall through to a fresh seed */ }
   return createSeed();
 }
@@ -39,6 +42,7 @@ interface StoreApi {
   session: Session;
   mode: StoreMode;
   syncError: string | null;
+  lastSaveMs: number | null; // round-trip time of the last accepted write (GEN-02: under 5 seconds)
   dismissSyncError(): void;
   signOut(): void;
   resetDemo(): void;
@@ -60,6 +64,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [db, setDb] = useState<Db>(loadDb);
   const [mode, setMode] = useState<StoreMode>('loading');
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [lastSaveMs, setLastSaveMs] = useState<number | null>(null);
   const clerk = useClerk();
   const { getToken } = useAuth();
   const { isLoaded, isSignedIn, user: clerkUser } = useUser();
@@ -89,8 +94,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const batch = pending.current.slice();
         const base = serverDb.current ?? createSeed();
         const candidate = batch.reduce((d, m) => m(d), base);
+        const started = performance.now();
         const r = await sync.current.save(version.current, candidate);
         if (r.kind === 'ok') {
+          setLastSaveMs(Math.round(performance.now() - started));
           serverDb.current = candidate;
           version.current = r.version;
           pending.current.splice(0, batch.length);
@@ -212,7 +219,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }), [user]);
 
   const api: StoreApi = {
-    db, user, session, mode, syncError,
+    db, user, session, mode, syncError, lastSaveMs,
     dismissSyncError() { setSyncError(null); },
 
     signOut() { void clerk.signOut({ redirectUrl: '/login' }); },

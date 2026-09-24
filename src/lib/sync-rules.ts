@@ -17,7 +17,12 @@ export function isAdminCaller(email: string, before: Db | null, adminEmails: str
   return me?.role === 'admin';
 }
 
-const sameArray = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+const sameArray = (a: readonly string[], b: readonly string[]) => {
+  if (a.length !== b.length) return false;
+  const x = [...a].sort();
+  const y = [...b].sort();
+  return x.every((v, i) => v === y[i]);
+};
 
 function sameExceptSignIn(a: User, b: User): boolean {
   return a.id === b.id && a.name === b.name && a.email.toLowerCase() === b.email.toLowerCase() && a.jobTitle === b.jobTitle

@@ -1,6 +1,6 @@
-import type { Subsystem } from '../data/types';
+import type { HelpTopic, Subsystem } from '../data/types';
 
-export interface HelpTopic { title: string; summary: string; fields: [string, string][]; }
+export type { HelpTopic };
 
 /** Context-sensitive help: one topic per screen, with field-level notes and whether each field is mandatory. */
 export const HELP: Record<string, HelpTopic> = {

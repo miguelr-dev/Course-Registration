@@ -134,6 +134,8 @@ export interface Outline {
   history: OutlineHistory[];
 }
 
+export interface HelpTopic { title: string; summary: string; fields: [string, string][]; }
+
 export interface GeneralGradeNote { scheduleNo: string; at: string; by: string; text: string; }
 
 export interface Transaction { at: string; by: string; subsystem: Subsystem | 'FRAMEWORK'; text: string; }
@@ -153,4 +155,6 @@ export interface Db {
   outlines: Outline[];
   gradeNotes: GeneralGradeNote[];
   transactions: Transaction[];
+  valueLists: Record<string, string[]>; // user-maintained allowed values per entry field (GEN-11, GEN-12)
+  helpTopics: Record<string, HelpTopic>; // context-sensitive help, editable under security control
 }

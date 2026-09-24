@@ -7,7 +7,8 @@ describe('api/_lib/schema.ts', () => {
     const sql = readFileSync(new URL('../../db/schema.sql', import.meta.url), 'utf8');
     expect(SCHEMA_SQL).toBe(sql);
   });
-  it('creates the document table the API relies on', () => {
-    expect(SCHEMA_SQL).toMatch(/create table if not exists signmeup_state/);
+  it('creates the version row the API locks on and the append-only guard', () => {
+    expect(SCHEMA_SQL).toMatch(/create table if not exists document_version/);
+    expect(SCHEMA_SQL).toMatch(/signmeup\.allow_delete/);
   });
 });

@@ -171,17 +171,27 @@ vercel redeploy <latest-production-deployment-url>
 
 ### Shared database (Supabase)
 
-Everything the app knows (users and roles, students, registrations, notes,
-outlines, grades, the transaction log) is one JSON document. The API at
-`api/db.ts` keeps it in a single row of a `signmeup_state` table in Supabase
-Postgres, created automatically on first use:
+Storage is relational. The tables are defined in [db/schema.sql](db/schema.sql)
+(departments, users and access areas, terms, faculty and catalog with their
+many-to-many links, majors and outlines with history, students with notes and
+completed and transfer courses, sections, registrations and grades, general
+grade notes, value lists, help topics, and the transaction log). The API applies
+that file automatically the first time it connects, so a fresh Supabase project
+needs nothing but `DATABASE_URL`.
 
-- `GET /api/db` returns `{ version, db }`.
-- `PUT /api/db` with `{ version, db }` replaces the document only if `version`
-  still matches (compare-and-set). On a mismatch it answers `409` with the
-  current document; the browser rebases its unsaved changes onto it and
-  retries, so two people acting at once do not overwrite each other. Open tabs
-  also poll every 15 seconds for other people's changes.
+The browser still works with one document that mirrors those tables:
+
+- `GET /api/db` assembles the document from the tables and returns
+  `{ version, db }`.
+- `PUT /api/db` with `{ version, db }` diffs the document against the current
+  rows and applies the difference as inserts, updates and deletes inside one
+  transaction that locks the `document_version` row (compare-and-set). On a
+  version mismatch it answers `409` with the current document; the browser
+  rebases its unsaved changes and retries, so two people acting at once never
+  overwrite each other. Open tabs also poll every 15 seconds.
+- Notes, outline history and the transaction log are append-only: a database
+  trigger rejects updates and deletes (ER-03, MAJ-07, GEN-08). Only an
+  administrator's sample-data reset may cascade-delete them.
 - Every request must carry the Clerk session token. The function verifies it
   against Clerk's public JWKS (derived from the publishable key, so no secret
   is needed) and reads the caller's email from the token's `email` claim.
@@ -190,6 +200,13 @@ Postgres, created automatically on first use:
   own account on first sign-in as a plain student (or as an administrator when
   the address is in `VITE_ADMIN_EMAILS`) and to record sign-in times. Anything
   else answers `403` and the browser discards the change.
+- The page footer shows the round-trip time of the last accepted write, which
+  is how the 5-second response requirement (GEN-02) is checked.
+
+The translation between document and tables lives in `api/_lib/mapping.ts`
+and is covered by a round-trip test over the whole sample university. The
+sample university is loaded by the first sign-in (the browser seeds the
+document; the API writes the rows), so no separate seed script is needed.
 
 How someone gets a role, in order of precedence:
 
@@ -202,7 +219,7 @@ Server configuration:
 
 | Variable | Where | Purpose |
 |---|---|---|
-| `DATABASE_URL` | Vercel only | Supabase Postgres connection string (the *Session pooler* URI on port 5432 works). Server-side only; never prefix with `VITE_`. |
+| `DATABASE_URL` | Vercel only | Supabase Postgres connection string (the *Session pooler* URI on port 5432 works). Server-side only; never prefix with `VITE_`. Kept in Doppler (project `course-registration`, config `prd`) and copied to Vercel from there. |
 | `VITE_CLERK_PUBLISHABLE_KEY` | Vercel | Also read by the API to find Clerk's JWKS. |
 | `VITE_ADMIN_EMAILS` | Vercel | Also read by the API to allow admin bootstrapping. |
 
@@ -212,12 +229,6 @@ The Clerk instance must add the email to session tokens. It is configured
 ```bash
 clerk config patch --yes --json '{"session":{"claims":{"email":"{{user.primary_email_address}}"}}}'
 ```
-
-The normalized relational design the requirements ask for (students, departments,
-courses, advisors with one-to-many and many-to-many tables, append-only notes
-and history) is in [db/schema.sql](db/schema.sql), ready to run in the
-Supabase SQL editor. The deployed app still reads and writes the single
-document; moving the API onto those tables is the next database milestone.
 
 If `DATABASE_URL` is missing or the API is unreachable (for example under plain
 `npm run dev`, which serves no functions), the app falls back to **local mode**:

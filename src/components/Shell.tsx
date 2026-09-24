@@ -10,7 +10,7 @@ const ShellContext = createContext<ShellCtx>({ toast: () => {} });
 export const useToast = () => useContext(ShellContext).toast;
 
 export function Shell({ children, panel, helpKey, screen }: { children: ReactNode; panel?: ReactNode; helpKey: keyof typeof HELP; screen: string }) {
-  const { user, signOut, mode, syncError, dismissSyncError } = useStore();
+  const { db, user, signOut, mode, syncError, dismissSyncError, lastSaveMs } = useStore();
   const [help, setHelp] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -21,7 +21,7 @@ export function Shell({ children, panel, helpKey, screen }: { children: ReactNod
   }, [toast]);
 
   const items = SUBSYSTEMS.filter((s) => user?.access.includes(s.code));
-  const topic = HELP[helpKey];
+  const topic = db.helpTopics?.[helpKey] ?? HELP[helpKey];
 
   return (
     <ShellContext.Provider value={{ toast: setToast }}>
@@ -51,7 +51,7 @@ export function Shell({ children, panel, helpKey, screen }: { children: ReactNod
             )}
             {children}
           </HeaderActionsContext.Provider>
-          <div className="foot"><span>{screen}</span><span>SignMeUp · CS 532 prototype</span></div>
+          <div className="foot"><span>{screen}</span><span>SignMeUp · CS 532 prototype{mode === 'shared' ? ` · shared database${lastSaveMs !== null ? ` · last save ${lastSaveMs} ms` : ''}` : mode === 'local' ? ' · local mode' : ''}</span></div>
         </div>
         {panel}
         {help && (
