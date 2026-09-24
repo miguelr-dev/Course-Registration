@@ -53,6 +53,7 @@ Course-Registration/
 │   ├── components/           # app shell, help drawer, icons, shared UI
 │   ├── screens/              # one file per screen (see below)
 │   └── styles/global.css     # design tokens and component styles
+├── db/schema.sql             # relational schema for Supabase (normalized tables + document store)
 ├── vercel.json               # single-page-app rewrite for Vercel
 └── .github/workflows/ci.yml  # CI checks, run on every PR and push to main
 ```
@@ -211,6 +212,12 @@ The Clerk instance must add the email to session tokens. It is configured
 ```bash
 clerk config patch --yes --json '{"session":{"claims":{"email":"{{user.primary_email_address}}"}}}'
 ```
+
+The normalized relational design the requirements ask for (students, departments,
+courses, advisors with one-to-many and many-to-many tables, append-only notes
+and history) is in [db/schema.sql](db/schema.sql), ready to run in the
+Supabase SQL editor. The deployed app still reads and writes the single
+document; moving the API onto those tables is the next database milestone.
 
 If `DATABASE_URL` is missing or the API is unreachable (for example under plain
 `npm run dev`, which serves no functions), the app falls back to **local mode**:
