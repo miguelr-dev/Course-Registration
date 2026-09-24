@@ -59,11 +59,13 @@ Course-Registration/
 
 ## The prototype
 
-A React + TypeScript single-page app (Vite). Data lives in the browser
-(`localStorage`) and is seeded with a small sample university, so every screen
-is functional without a backend: registration rules are enforced, notes and
-outline history are append-only, grades update statistics live, and every
-transaction is labeled with the user's name, date and time.
+A React + TypeScript single-page app (Vite) with a small API layer of Vercel
+serverless functions. The data model is one document seeded with a small sample
+university; it is stored in Supabase Postgres and shared by everyone who signs
+in (see *Shared database* below). Every screen is functional: registration
+rules are enforced, notes and outline history are append-only, grades update
+statistics live, and every transaction is labeled with the user's name, date
+and time.
 
 | Screen | Route | Who |
 |---|---|---|
@@ -165,9 +167,56 @@ vercel redeploy <latest-production-deployment-url>
   free but has usage limits and shows a "Development mode" badge on the form.
   Going to production needs a production instance with a domain, production
   keys on Vercel, and a paid Clerk plan for the allowlist feature.
-- User records, roles and everything else still live in the browser's
-  `localStorage`. Roles granted under *Authorized users* therefore apply only
-  in the browser where they were granted until a shared backend exists.
+
+### Shared database (Supabase)
+
+Everything the app knows (users and roles, students, registrations, notes,
+outlines, grades, the transaction log) is one JSON document. The API at
+`api/db.ts` keeps it in a single row of a `signmeup_state` table in Supabase
+Postgres, created automatically on first use:
+
+- `GET /api/db` returns `{ version, db }`.
+- `PUT /api/db` with `{ version, db }` replaces the document only if `version`
+  still matches (compare-and-set). On a mismatch it answers `409` with the
+  current document; the browser rebases its unsaved changes onto it and
+  retries, so two people acting at once do not overwrite each other. Open tabs
+  also poll every 15 seconds for other people's changes.
+- Every request must carry the Clerk session token. The function verifies it
+  against Clerk's public JWKS (derived from the publishable key, so no secret
+  is needed) and reads the caller's email from the token's `email` claim.
+- **Roles are protected server-side** (`src/lib/sync-rules.ts`). A non-admin
+  write may not add, remove or change any user except to create the caller's
+  own account on first sign-in as a plain student (or as an administrator when
+  the address is in `VITE_ADMIN_EMAILS`) and to record sign-in times. Anything
+  else answers `403` and the browser discards the change.
+
+How someone gets a role, in order of precedence:
+
+1. An administrator already added their SDSU email under *Authorized users*:
+   they get that role and those access areas on first sign-in.
+2. Their email is in `VITE_ADMIN_EMAILS`: system administrator.
+3. Otherwise: student, with an empty record.
+
+Server configuration:
+
+| Variable | Where | Purpose |
+|---|---|---|
+| `DATABASE_URL` | Vercel only | Supabase Postgres connection string (the *Session pooler* URI on port 5432 works). Server-side only; never prefix with `VITE_`. |
+| `VITE_CLERK_PUBLISHABLE_KEY` | Vercel | Also read by the API to find Clerk's JWKS. |
+| `VITE_ADMIN_EMAILS` | Vercel | Also read by the API to allow admin bootstrapping. |
+
+The Clerk instance must add the email to session tokens. It is configured
+(Dashboard: *Sessions → Customize session token*, or with the CLI):
+
+```bash
+clerk config patch --yes --json '{"session":{"claims":{"email":"{{user.primary_email_address}}"}}}'
+```
+
+If `DATABASE_URL` is missing or the API is unreachable (for example under plain
+`npm run dev`, which serves no functions), the app falls back to **local mode**:
+a banner says so, and changes stay in that browser's `localStorage`. Run
+`vercel dev` with a `.env.local` that has `DATABASE_URL` to exercise the API
+locally.
 
 ```bash
 npm install

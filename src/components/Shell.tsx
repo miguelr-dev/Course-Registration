@@ -3,13 +3,14 @@ import { NavLink, Link } from 'react-router-dom';
 import { useStore } from '../data/store';
 import { HELP, SUBSYSTEMS } from './help';
 import { Help, Print, SignOut, UserIcon, X } from './icons';
+import { Banner } from './ui';
 
 interface ShellCtx { toast(msg: string): void; }
 const ShellContext = createContext<ShellCtx>({ toast: () => {} });
 export const useToast = () => useContext(ShellContext).toast;
 
 export function Shell({ children, panel, helpKey, screen }: { children: ReactNode; panel?: ReactNode; helpKey: keyof typeof HELP; screen: string }) {
-  const { user, signOut } = useStore();
+  const { user, signOut, mode, syncError, dismissSyncError } = useStore();
   const [help, setHelp] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -42,6 +43,12 @@ export function Shell({ children, panel, helpKey, screen }: { children: ReactNod
         </nav>
         <div className={`main${panel ? ' narrow' : ''}`}>
           <HeaderActionsContext.Provider value={{ openHelp: () => setHelp(true) }}>
+            {syncError && (
+              <div className="no-print" style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <div className="grow"><Banner kind={mode === 'local' ? 'warn' : 'error'}>{syncError}</Banner></div>
+                <button className="btn ghost sm icon" onClick={dismissSyncError} aria-label="Dismiss"><X /></button>
+              </div>
+            )}
             {children}
           </HeaderActionsContext.Provider>
           <div className="foot"><span>{screen}</span><span>SignMeUp · CS 532 prototype</span></div>

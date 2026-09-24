@@ -1,13 +1,15 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useClerk, useSession, useUser } from '@clerk/react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useAuth, useClerk, useSession, useUser } from '@clerk/react';
 import { createSeed } from './seed';
+import { SyncClient } from './sync';
 import type { Db, NoteCategory, OutlineStatus, RegistrationType, Subsystem, User } from './types';
 import { nowIso } from '../lib/format';
 import { registrationIssues, type EligibilityIssue } from '../lib/rules';
 import { adminEmails, isAllowedEmail, provisionUser } from '../lib/auth';
 
-const STORAGE_KEY = 'signmeup.db.v2';
-const STAMP_KEY = 'signmeup.stamped.v2';
+const STORAGE_KEY = 'signmeup.db.v3'; // local cache of the shared document (and the whole store when the API is unavailable)
+const STAMP_KEY = 'signmeup.stamped.v3';
+const POLL_MS = 15000;
 
 function loadDb(): Db {
   try {
@@ -21,15 +23,23 @@ export type Result = { ok: true } | { ok: false; issues: EligibilityIssue[] };
 
 /** What Clerk knows about the browser session, independent of the SignMeUp user record. */
 export interface Session {
-  ready: boolean; // Clerk has loaded and we know whether someone is signed in
+  ready: boolean; // Clerk has loaded, and for a signed-in user the shared document has been fetched (or found unavailable)
   email: string | null; // primary address of the signed-in Clerk user, lower-cased
   denied: boolean; // signed in, but the address is outside the allowed domain
 }
+
+/** 'shared': every change goes to the Supabase-backed API; 'local': the API is unavailable and changes stay in this browser. */
+export type StoreMode = 'loading' | 'shared' | 'local';
+
+type Mutation = (d: Db) => Db;
 
 interface StoreApi {
   db: Db;
   user: User | null;
   session: Session;
+  mode: StoreMode;
+  syncError: string | null;
+  dismissSyncError(): void;
   signOut(): void;
   resetDemo(): void;
   register(studentId: string, scheduleNo: string, type: RegistrationType): Result;
@@ -48,27 +58,133 @@ const Ctx = createContext<StoreApi | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [db, setDb] = useState<Db>(loadDb);
+  const [mode, setMode] = useState<StoreMode>('loading');
+  const [syncError, setSyncError] = useState<string | null>(null);
   const clerk = useClerk();
+  const { getToken } = useAuth();
   const { isLoaded, isSignedIn, user: clerkUser } = useUser();
   const { session: clerkSession } = useSession();
+
+  // Shared-document bookkeeping: the last server state we know, its version, and changes not yet accepted by the server.
+  const sync = useRef<SyncClient | null>(null);
+  sync.current ??= new SyncClient(() => getToken());
+  const serverDb = useRef<Db | null>(null);
+  const version = useRef(0);
+  const pending = useRef<Mutation[]>([]);
+  const flushing = useRef(false);
+  const retryTimer = useRef<number | null>(null);
 
   useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); }, [db]);
 
   const email = clerkUser?.primaryEmailAddress?.emailAddress.trim().toLowerCase() ?? null;
   const denied = !!email && !isAllowedEmail(email);
-  const session: Session = { ready: isLoaded, email, denied };
+  const session: Session = { ready: isLoaded && (!email || denied || mode !== 'loading'), email, denied };
   const user = useMemo(() => (email && !denied ? db.users.find((u) => u.email.toLowerCase() === email) ?? null : null), [db.users, email, denied]);
+
+  const flush = useCallback(async () => {
+    if (flushing.current || !sync.current) return;
+    flushing.current = true;
+    try {
+      for (let attempt = 0; pending.current.length && attempt < 6; attempt++) {
+        const batch = pending.current.slice();
+        const base = serverDb.current ?? createSeed();
+        const candidate = batch.reduce((d, m) => m(d), base);
+        const r = await sync.current.save(version.current, candidate);
+        if (r.kind === 'ok') {
+          serverDb.current = candidate;
+          version.current = r.version;
+          pending.current.splice(0, batch.length);
+        } else if (r.kind === 'conflict') {
+          // Someone else wrote first: rebase our pending changes on their document and try again.
+          serverDb.current = r.db ?? createSeed();
+          version.current = r.version;
+          setDb(pending.current.reduce((d, m) => m(d), serverDb.current));
+        } else if (r.kind === 'refused') {
+          pending.current = [];
+          if (serverDb.current) setDb(serverDb.current);
+          setSyncError(r.reason);
+          break;
+        } else {
+          setSyncError(`Could not save to the shared database (${r.reason}). Retrying…`);
+          retryTimer.current = window.setTimeout(() => { void flush(); }, 5000);
+          break;
+        }
+      }
+    } finally {
+      flushing.current = false;
+    }
+  }, []);
+
+  /** Apply a change locally now, and to the shared document as soon as the server accepts it. */
+  const commit = useCallback((m: Mutation) => {
+    setDb(m);
+    if (mode === 'shared') {
+      pending.current.push(m);
+      void flush();
+    }
+  }, [mode, flush]);
+
+  // First load after sign-in: fetch the shared document, or seed it if this is the very first user.
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || !email || denied || mode !== 'loading' || !sync.current) return;
+    let cancelled = false;
+    (async () => {
+      const r = await sync.current!.load();
+      if (cancelled) return;
+      if (r.kind === 'ok') {
+        if (r.db) {
+          serverDb.current = r.db;
+          version.current = r.version;
+          setDb(r.db);
+        } else {
+          const seed = createSeed();
+          const w = await sync.current!.save(0, seed);
+          if (cancelled) return;
+          if (w.kind === 'ok') { serverDb.current = seed; version.current = w.version; setDb(seed); }
+          else if (w.kind === 'conflict' && w.db) { serverDb.current = w.db; version.current = w.version; setDb(w.db); }
+          else {
+            setMode('local');
+            const why = w.kind === 'refused' ? w.reason : w.kind === 'unavailable' ? `Shared database unavailable (${w.reason}).` : 'Shared database returned an empty document.';
+            setSyncError(`${why} Changes stay in this browser.`);
+            return;
+          }
+        }
+        setMode('shared');
+      } else {
+        setMode('local');
+        setSyncError(`Shared database unavailable (${r.reason}). Changes stay in this browser.`);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isLoaded, isSignedIn, email, denied, mode]);
+
+  // Pick up other people's changes while idle.
+  useEffect(() => {
+    if (mode !== 'shared') return;
+    const tick = async () => {
+      if (document.visibilityState !== 'visible' || pending.current.length || flushing.current || !sync.current) return;
+      const r = await sync.current.load();
+      if (r.kind === 'ok' && r.db && r.version !== version.current && !pending.current.length) {
+        serverDb.current = r.db;
+        version.current = r.version;
+        setDb(r.db);
+      }
+    };
+    const id = window.setInterval(() => { void tick(); }, POLL_MS);
+    document.addEventListener('visibilitychange', tick);
+    return () => { window.clearInterval(id); document.removeEventListener('visibilitychange', tick); if (retryTimer.current) window.clearTimeout(retryTimer.current); };
+  }, [mode]);
 
   // Once per Clerk session: stamp the sign-in, and on a first sign-in create the SignMeUp user (plus a student record).
   const clerkUserId = clerkUser?.id ?? null;
   const clerkName = [clerkUser?.firstName, clerkUser?.lastName].filter(Boolean).join(' ');
   const sessionId = clerkSession?.id ?? null;
   useEffect(() => {
-    if (!isLoaded || !isSignedIn || !email || !clerkUserId || !sessionId || denied) return;
+    if (!isLoaded || !isSignedIn || !email || !clerkUserId || !sessionId || denied || mode === 'loading') return;
     if (sessionStorage.getItem(STAMP_KEY) === sessionId) return;
     sessionStorage.setItem(STAMP_KEY, sessionId);
     const at = nowIso();
-    setDb((d) => {
+    commit((d) => {
       const existing = d.users.find((u) => u.email.toLowerCase() === email);
       if (existing) {
         return {
@@ -89,20 +205,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ],
       };
     });
-  }, [isLoaded, isSignedIn, email, clerkUserId, clerkName, sessionId, denied]);
+  }, [isLoaded, isSignedIn, email, clerkUserId, clerkName, sessionId, denied, mode, commit]);
 
   const stamp = useCallback((d: Db, subsystem: Subsystem | 'FRAMEWORK', text: string, by?: string): Db => ({
     ...d, transactions: [...d.transactions, { at: nowIso(), by: by ?? user?.name ?? 'System', subsystem, text }],
   }), [user]);
 
   const api: StoreApi = {
-    db, user, session,
+    db, user, session, mode, syncError,
+    dismissSyncError() { setSyncError(null); },
 
     signOut() { void clerk.signOut({ redirectUrl: '/login' }); },
 
     resetDemo() {
-      if (!confirm('Reset the sample data? Registrations, notes and grades entered in this browser are discarded.')) return;
-      setDb(createSeed());
+      if (mode === 'shared' && user?.role !== 'admin') { setSyncError('Only an administrator can reset the shared sample data.'); return; }
+      if (!confirm(mode === 'shared' ? 'Reset the shared sample data for everyone? Registrations, notes, grades and non-admin accounts are discarded.' : 'Reset the sample data? Registrations, notes and grades entered in this browser are discarded.')) return;
+      const keep = user && user.role === 'admin' ? user : null;
+      commit(() => { const seed = createSeed(); return keep ? { ...seed, users: [...seed.users, keep] } : seed; });
     },
 
     register(studentId, scheduleNo, type) {
@@ -112,18 +231,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const issues = registrationIssues(db, student, offering);
       if (issues.length) return { ok: false, issues };
       const by = user?.name ?? `${student.firstName} ${student.lastName}`;
-      setDb((d) => stamp({ ...d, registrations: [...d.registrations, { studentId, scheduleNo, type, registeredBy: by, registeredAt: nowIso() }] }, 'REG', `Registered ${offering.courseId} (${scheduleNo}) for ${student.firstName} ${student.lastName}`));
+      commit((d) => stamp({ ...d, registrations: [...d.registrations, { studentId, scheduleNo, type, registeredBy: by, registeredAt: nowIso() }] }, 'REG', `Registered ${offering.courseId} (${scheduleNo}) for ${student.firstName} ${student.lastName}`));
       return { ok: true };
     },
 
     drop(studentId, scheduleNo) {
       const offering = db.offerings.find((o) => o.scheduleNo === scheduleNo);
-      setDb((d) => stamp({ ...d, registrations: d.registrations.filter((r) => !(r.studentId === studentId && r.scheduleNo === scheduleNo)) }, 'REG', `Dropped ${offering?.courseId ?? scheduleNo} (${scheduleNo})`));
+      commit((d) => stamp({ ...d, registrations: d.registrations.filter((r) => !(r.studentId === studentId && r.scheduleNo === scheduleNo)) }, 'REG', `Dropped ${offering?.courseId ?? scheduleNo} (${scheduleNo})`));
     },
 
     requestWaiver(studentId, courseId, note) {
       const at = nowIso();
-      setDb((d) => stamp({
+      commit((d) => stamp({
         ...d,
         students: d.students.map((s) => (s.id === studentId ? { ...s, notes: [...s.notes, { at, byEmployeeId: user?.id ?? studentId, category: 'advising', text: `Waiver requested for ${courseId}. ${note}`.trim() }] } : s)),
       }, 'REG', `Requested advisor waiver for ${courseId}`));
@@ -131,7 +250,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     appendNote(studentId, category, text) {
       const at = nowIso();
-      setDb((d) => stamp({
+      commit((d) => stamp({
         ...d,
         students: d.students.map((s) => (s.id === studentId ? { ...s, notes: [...s.notes, { at, byEmployeeId: user?.id ?? '0', category, text }] } : s)),
       }, 'ER', `Appended ${category} note to student ${studentId}`));
@@ -140,7 +259,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setOutlineStatus(studentId, courseId, status, note) {
       const at = nowIso();
       const by = user?.name ?? 'System';
-      setDb((d) => stamp({
+      commit((d) => stamp({
         ...d,
         outlines: d.outlines.map((o) => {
           if (o.studentId !== studentId) return o;
@@ -158,7 +277,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     addOutlineCourse(studentId, courseId) {
       const at = nowIso();
       const by = user?.name ?? 'System';
-      setDb((d) => stamp({
+      commit((d) => stamp({
         ...d,
         outlines: d.outlines.map((o) => (o.studentId !== studentId || o.entries.some((e) => e.courseId === courseId) ? o : {
           ...o,
@@ -173,7 +292,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const offering = db.offerings.find((o) => o.scheduleNo === scheduleNo);
       const instructorUser = db.users.find((u) => u.facultyId === offering?.instructorId);
       const byOther = user && instructorUser && user.id !== instructorUser.id;
-      setDb((d) => stamp({
+      commit((d) => stamp({
         ...d,
         registrations: d.registrations.map((r) => (r.scheduleNo === scheduleNo && r.studentId === studentId
           ? { ...r, grade: grade || undefined, gradeNote: note ?? r.gradeNote, ...(byOther ? { gradeUpdatedBy: user!.name, gradeUpdatedAt: nowIso() } : {}) }
@@ -182,7 +301,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
 
     addGradeNote(scheduleNo, text) {
-      setDb((d) => stamp({ ...d, gradeNotes: [...d.gradeNotes, { scheduleNo, at: nowIso(), by: user?.name ?? 'System', text }] }, 'GRADE', `Added general note to ${scheduleNo}`));
+      commit((d) => stamp({ ...d, gradeNotes: [...d.gradeNotes, { scheduleNo, at: nowIso(), by: user?.name ?? 'System', text }] }, 'GRADE', `Added general note to ${scheduleNo}`));
     },
 
     addUser(u) {
@@ -192,12 +311,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!u.name.trim()) return { ok: false, reason: 'Name is required.', requirement: 'Enter the user’s full name; hyphenated names are accepted.' };
       if (!isAllowedEmail(email)) return { ok: false, reason: 'Email address is not an SDSU address.', requirement: 'Enter the person’s @sdsu.edu address; that is what they sign in with.' };
       if (db.users.some((x) => x.email.toLowerCase() === email)) return { ok: false, reason: `${email} is already assigned to another user.`, requirement: 'Enter an address that no other user has.' };
-      setDb((d) => stamp({ ...d, users: [...d.users, { ...u, email }] }, 'FRAMEWORK', `Added user ${u.name} (${u.id}) for ${email}`));
+      commit((d) => stamp({ ...d, users: [...d.users, { ...u, email }] }, 'FRAMEWORK', `Added user ${u.name} (${u.id}) for ${email}`));
       return { ok: true };
     },
 
     updateUserAccess(userId, access) {
-      setDb((d) => stamp({ ...d, users: d.users.map((u) => (u.id === userId ? { ...u, access } : u)) }, 'FRAMEWORK', `Updated access areas for ${userId}: ${access.join(', ') || 'none'}`));
+      commit((d) => stamp({ ...d, users: d.users.map((u) => (u.id === userId ? { ...u, access } : u)) }, 'FRAMEWORK', `Updated access areas for ${userId}: ${access.join(', ') || 'none'}`));
     },
   };
 

@@ -12,7 +12,7 @@ const AREAS: Subsystem[] = ['ER', 'REG', 'MAJOR', 'FCI', 'GRADE', 'USERS'];
 const COLS = '1fr 64px 170px 190px 116px';
 
 export default function AuthorizedUsers() {
-  const { db, user, addUser, updateUserAccess } = useStore();
+  const { db, user, addUser, updateUserAccess, resetDemo, mode: storeMode } = useStore();
   const toast = useToast();
   const [q, setQ] = useState('');
   const [area, setArea] = useState('');
@@ -32,6 +32,7 @@ export default function AuthorizedUsers() {
   return (
     <Shell helpKey="users" screen="Framework · Authorized users" panel={panel}>
       <PageHeader title="Authorized users" meta={<span>{db.users.length} users · sign-in and passwords are handled by Clerk; passwords are never stored, shown or printed</span>}>
+        <button className="btn secondary no-print" onClick={resetDemo} title={storeMode === 'shared' ? 'Restores the sample university for everyone; your admin account is kept' : 'Restores the sample university in this browser'}>Reset sample data</button>
         <button className="btn secondary" onClick={() => window.print()}>Print user report</button>
         <button className="btn" onClick={() => setMode({ kind: 'add' })}><Plus />Add user</button>
       </PageHeader>
