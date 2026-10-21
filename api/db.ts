@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { authenticate, AuthError } from './_lib/auth.js';
+import { checkObjectPermissions } from './_lib/permissions.js';
 import { readState, StateError, writeState } from './_lib/state.js';
 import { adminEmails } from '../src/lib/auth.js';
 import { isAdminCaller, validateWrite } from '../src/lib/sync-rules.js';
@@ -9,7 +10,8 @@ import type { Db } from '../src/data/types.js';
  * GET  /api/db            -> { version, db }            (db is null until the first write seeds it)
  * PUT  /api/db {version, db} -> { version }            on success
  *                            -> 409 { version, db }    when someone else wrote first: rebase and retry
- *                            -> 403 { reason }         when the write changes users/roles without admin rights
+ *                            -> 403 { reason }         when the write changes users/roles without admin rights, or
+ *                                                      touches an object the caller's role may not change (permissions.ts)
  *                            -> 400 { reason }         when the database rejects the rows (constraint violation)
  *
  * Storage is relational (db/schema.sql); see api/_lib/state.ts and mapping.ts.
@@ -36,6 +38,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const admins = adminEmails(process.env.VITE_ADMIN_EMAILS);
       const check = validateWrite(caller.email, current?.doc ?? null, db, admins);
       if (!check.ok) return res.status(403).json({ reason: check.reason });
+      const allowed = checkObjectPermissions(caller.email, current?.doc ?? null, db, admins);
+      if (!allowed.ok) return res.status(403).json({ reason: allowed.reason });
       const next = await writeState(version, db, caller.email, isAdminCaller(caller.email, current?.doc ?? null, admins));
       if (next === null) {
         const latest = await readState();

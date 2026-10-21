@@ -200,6 +200,23 @@ The browser still works with one document that mirrors those tables:
   own account on first sign-in as a plain student (or as an administrator when
   the address is in `VITE_ADMIN_EMAILS`) and to record sign-in times. Anything
   else answers `403` and the browser discards the change.
+- **Every other object is protected too** (`api/_lib/permissions.ts`,
+  GEN-05). Each write is compared with the stored rows table by table, and
+  each added, changed or removed row must be allowed for the caller:
+
+  | Object | Who may change it |
+  |---|---|
+  | Own registrations | the student (ungraded only); staff with REG for anyone |
+  | Student record | staff with ER; the student for their own telephone and address |
+  | Student notes | staff with ER, or the student on their own record; append-only, stamped with the author's own ID |
+  | Completed and transfer courses | staff with ER |
+  | Grades and grade notes | the section's primary instructor during the grade window, or registrar staff with GRADE at any time |
+  | Approved outlines | an advisor listed for that major, or registrar staff, with MAJOR; entries and history are never deleted |
+  | Catalog, schedule, majors, value lists, help | registrar staff |
+  | Transaction log | anyone, append-only, labeled with the caller's own name |
+
+  Administrators may change anything. A refused write answers `403` with the
+  reason, and the browser shows it and restores what it had before.
 - The page footer shows the round-trip time of the last accepted write, which
   is how the 5-second response requirement (GEN-02) is checked.
 
