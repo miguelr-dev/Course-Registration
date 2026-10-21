@@ -7,6 +7,7 @@ import { Check, ChevronDown, ChevronUp, Search, X } from '../components/icons';
 import { conflicts, courseOf, currentRegistrations, MAX_UNITS, prereqStatus, registrationIssues, seatsOpen, unitsRegistered } from '../lib/rules';
 import { formatDate, formatTimeRange, shortName } from '../lib/format';
 import { wildcardMatch } from '../lib/wildcard';
+import { useEscapeToCancel } from '../components/draft';
 
 const COLS = '84px 1fr 44px 130px 64px 92px';
 
@@ -38,6 +39,7 @@ export default function CourseSearch() {
   const lastReg = [...db.transactions].reverse().find((t) => t.subsystem === 'REG' && t.by === user?.name);
 
   function cancel() { setSelected(null); setType('letter'); setNote(''); }
+  useEscapeToCancel(selected !== null, cancel);
   function confirm() {
     if (!sel || !student) return;
     const r = register(student.id, sel.scheduleNo, type);

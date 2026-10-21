@@ -7,6 +7,7 @@ import { Empty, Progress, StatusChip } from '../components/ui';
 import { Plus } from '../components/icons';
 import { completedCourseIds, courseOf, currentRegistrations, offeringOf } from '../lib/rules';
 import { formatDate, formatDateTime, shortName } from '../lib/format';
+import { useEscapeToCancel } from '../components/draft';
 
 const COLS_EDIT = '84px 1fr 100px 100px 140px 120px';
 const COLS_VIEW = '84px 1fr 100px 100px 140px';
@@ -24,6 +25,7 @@ export default function MajorOutline() {
   const [tab, setTab] = useState<'outline' | 'history'>('outline');
   const [adding, setAdding] = useState('');
   const [editing, setEditing] = useState<{ courseId: string; status: OutlineStatus; note: string } | null>(null);
+  useEscapeToCancel(editing !== null || adding !== '', () => { setEditing(null); setAdding(''); });
 
   if (!student || !outline) return <Shell helpKey="outline" screen="MAJOR · Approved major outline"><PageHeader title="Approved major outline" /><Empty>No approved outline on file for this student.</Empty></Shell>;
 
@@ -72,6 +74,7 @@ export default function MajorOutline() {
               {candidates.map((c) => <option key={c} value={c}>{c} {courseOf(db, c)?.title}</option>)}
             </select>
             <button className="btn" disabled={!adding} onClick={() => { addOutlineCourse(student.id, adding); toast(`Added ${adding} as Approved`); setAdding(''); }}><Plus />Add</button>
+            {adding && <button className="btn ghost" onClick={() => setAdding('')}>Cancel</button>}
           </div>
         )}
       </PageHeader>

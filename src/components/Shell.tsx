@@ -4,6 +4,7 @@ import { useStore } from '../data/store';
 import { HELP, SUBSYSTEMS } from './help';
 import { Help, Print, SignOut, UserIcon, X } from './icons';
 import { Banner } from './ui';
+import { useEscapeToCancel } from './draft';
 
 interface ShellCtx { toast(msg: string): void; }
 const ShellContext = createContext<ShellCtx>({ toast: () => {} });
@@ -13,6 +14,7 @@ export function Shell({ children, panel, helpKey, screen }: { children: ReactNod
   const { db, user, signOut, mode, syncError, dismissSyncError, lastSaveMs } = useStore();
   const [help, setHelp] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  useEscapeToCancel(help, () => setHelp(false));
 
   useEffect(() => {
     if (!toast) return;
@@ -63,7 +65,7 @@ export function Shell({ children, panel, helpKey, screen }: { children: ReactNod
                 <h3>Fields on this screen</h3>
                 <dl>{topic.fields.map(([f, d]) => <><dt key={`${f}-t`}>{f}</dt><dd key={`${f}-d`}>{d}</dd></>)}</dl>
                 <h3>Standard controls</h3>
-                <p>Help and Print are on every screen. Cancel restores the entries you were changing to how they were before you started. Every completed action is labeled with your name, the date and the time.</p>
+                <p>Help and Print are on every screen. You can cancel any action before you complete it: choose Cancel and restore, close the panel, or press Esc. Every entry you made during that action is put back to how it was before you started, and nothing is recorded. Every completed action is labeled with your name, the date and the time.</p>
               </div>
             </aside>
           </div>

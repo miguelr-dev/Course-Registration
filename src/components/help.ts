@@ -30,7 +30,7 @@ export const HELP: Record<string, HelpTopic> = {
   },
   grades: {
     title: 'Course grades', summary: 'Grade entry for a course you are the primary instructor of. Grades may only be entered during the end-of-term window unless you hold special update privileges. If anyone other than the instructor changes a grade, the system records who did it and when.',
-    fields: [['Grade', 'Letter grade, CR/NC or AU depending on the registration type.'], ['Note', 'Optional. Attached to that student’s grade.'], ['General notes', 'Optional. Notes about the course not tied to a student.']],
+    fields: [['Grade', 'Letter grade, CR/NC or AU depending on the registration type. Changed grades are highlighted and are not recorded until you choose Save grades; Cancel and restore (or Esc) returns them to their saved values.'], ['Note', 'Optional. Attached to that student’s grade.'], ['General notes', 'Optional. Notes about the course not tied to a student.']],
   },
   users: {
     title: 'Authorized users', summary: 'Maintain who can use SignMeUp and which subsystems each user can reach. Passwords are handled by the sign-in service and are never stored, shown or printed here; users reset their own from the sign-in page. Adding a user with an @sdsu.edu address assigns that role the first time the address signs in.',
