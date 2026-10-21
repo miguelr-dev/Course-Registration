@@ -6,7 +6,7 @@ export type { HelpTopic };
 export const HELP: Record<string, HelpTopic> = {
   login: {
     title: 'Sign in', summary: 'Sign in with your SDSU email address. Anyone with an @sdsu.edu address can create an account; other addresses are refused. New accounts start as students; an administrator can widen access from Authorized Users. Every transaction you complete afterwards is recorded with your name, date and time.',
-    fields: [['Email', 'Mandatory. Must end in @sdsu.edu.'], ['Password', 'Mandatory. Managed by the sign-in service; use "Forgot password" on the sign-in page to reset it.']],
+    fields: [['Email', 'Mandatory. Must end in @sdsu.edu.'], ['Password', 'Mandatory. Validated by the sign-in service before you reach any screen. Use "Forgot password" on the sign-in page, or ask a system administrator to reset it.']],
   },
   dashboard: {
     title: 'Student dashboard', summary: 'Your schedule for the current term, your running units total, and the major courses you can register for right now: on your approved outline, prerequisites completed, and seats still open. Register one course at a time.',
@@ -33,8 +33,8 @@ export const HELP: Record<string, HelpTopic> = {
     fields: [['Grade', 'Letter grade, CR/NC or AU depending on the registration type.'], ['Note', 'Optional. Attached to that student’s grade.'], ['General notes', 'Optional. Notes about the course not tied to a student.']],
   },
   users: {
-    title: 'Authorized users', summary: 'Maintain who can use SignMeUp and which subsystems each user can reach. Passwords are handled by the sign-in service and are never stored, shown or printed here; users reset their own from the sign-in page. Adding a user with an @sdsu.edu address assigns that role the first time the address signs in.',
-    fields: [['Employee number', 'Mandatory. 5 to 8 digits; students use their student ID.'], ['Email', 'Mandatory. An @sdsu.edu address not already assigned.'], ['Job title', 'Mandatory.'], ['Access areas', 'Mandatory. At least one subsystem.']],
+    title: 'Authorized users', summary: 'Maintain who can use SignMeUp: name, employee number (students use their student ID), job title, role, allowable access areas, and password. Manage user changes nothing until you choose Save changes; Cancel and restore discards the edits. Passwords go straight to the sign-in service and are never stored, shown again or printed. Adding a user with an @sdsu.edu address assigns that role the first time the address signs in. Print user report prints the whole system or one subsystem, without passwords.',
+    fields: [['Role', 'Mandatory. Student accounts are numbered by student ID and open that student’s record.'], ['Employee number / Student ID', 'Mandatory. 5 to 8 digits for employees; exactly 8 for students.'], ['Email', 'Mandatory. An @sdsu.edu address not already assigned.'], ['Job title', 'Mandatory.'], ['Access areas', 'Mandatory. At least one subsystem.'], ['New password', 'Optional when adding; used to initialize or reset a password. At least 10 characters with letters and digits. Generate creates one to give to the user.'], ['Report scope', 'Optional. Whole system, or only users with access to one subsystem.']],
   },
 };
 

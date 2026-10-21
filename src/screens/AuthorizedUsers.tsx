@@ -6,117 +6,211 @@ import { Banner, Chip, Empty, Stamp } from '../components/ui';
 import { Plus, Search, X } from '../components/icons';
 import { formatDateTime } from '../lib/format';
 import { wildcardMatch } from '../lib/wildcard';
-import { ALLOWED_DOMAINS } from '../lib/auth';
+import { ALLOWED_DOMAINS, STUDENT_ACCESS } from '../lib/auth';
+import { passwordIssue, temporaryPassword } from '../lib/passwords';
 
 const AREAS: Subsystem[] = ['ER', 'REG', 'MAJOR', 'FCI', 'GRADE', 'USERS'];
-const COLS = '1fr 64px 170px 190px 116px';
+const COLS = '1fr 84px 170px 190px 116px';
+const ROLES: { value: Role; label: string }[] = [
+  { value: 'student', label: 'Student' }, { value: 'faculty', label: 'Faculty' }, { value: 'advisor', label: 'Advisor' },
+  { value: 'registrar', label: 'Registrar staff' }, { value: 'admin', label: 'System administrator' },
+];
+type Fail = { reason: string; requirement: string };
 
 export default function AuthorizedUsers() {
-  const { db, user, addUser, updateUserAccess, resetDemo, mode: storeMode } = useStore();
+  const { db, user, addUser, updateUser, setPassword, resetDemo, mode: storeMode } = useStore();
   const toast = useToast();
   const [q, setQ] = useState('');
   const [area, setArea] = useState('');
   const [scope, setScope] = useState<'all' | Subsystem>('all');
-  const [mode, setMode] = useState<{ kind: 'access'; id: string } | { kind: 'add' } | null>(null);
+  const [mode, setMode] = useState<{ kind: 'edit'; id: string } | { kind: 'add' } | null>(null);
 
   const users = useMemo(() => db.users.filter((u) => (!area || u.access.includes(area as Subsystem)) && (wildcardMatch(q, u.name) || wildcardMatch(q, u.id) || wildcardMatch(q, u.email))), [db.users, q, area]);
-  const target = mode?.kind === 'access' ? db.users.find((u) => u.id === mode.id) : undefined;
-  const lastChange = [...db.transactions].reverse().find((t) => t.subsystem === 'FRAMEWORK' && /Updated access|Added user/.test(t.text));
+  const target = mode?.kind === 'edit' ? db.users.find((u) => u.id === mode.id) : undefined;
+  const lastChange = [...db.transactions].reverse().find((t) => t.subsystem === 'FRAMEWORK' && /^(Updated|Added|Reset|Initialized)/.test(t.text));
+  const shared = storeMode === 'shared';
 
-  const panel = mode?.kind === 'access' && target
-    ? <AccessPanel target={target} onClose={() => setMode(null)} onAccess={(a) => { updateUserAccess(target.id, a); toast(`Access updated for ${target.name} · recorded under ${user!.name}`); }} last={lastChange} />
+  const panel = mode?.kind === 'edit' && target
+    ? <UserPanel key={target.id} target={target} shared={shared} onClose={() => setMode(null)} last={lastChange}
+        onSave={(c) => { const r = updateUser(target.id, c); if (r.ok) { toast(`Saved ${c.name} · recorded under ${user!.name}`); setMode(null); } return r; }}
+        onPassword={async (pw) => { const r = await setPassword(target.id, pw); if (r.ok) toast(`Password ${r.created ? 'initialized' : 'reset'} for ${target.name}`); return r; }} />
     : mode?.kind === 'add'
-      ? <AddPanel onClose={() => setMode(null)} onAdd={(u) => { const r = addUser(u); if (r.ok) { toast(`Added ${u.name}`); setMode(null); } return r; }} />
+      ? <AddPanel shared={shared} onClose={() => setMode(null)} onAdd={async (u, pw) => {
+          const r = addUser(u);
+          if (!r.ok) return r;
+          setMode(null);
+          if (!pw) { toast(`Added ${u.name}`); return r; }
+          const p = await setPassword(u.id, pw);
+          toast(p.ok ? `Added ${u.name} and initialized the password` : `Added ${u.name}, but the password was not set: ${p.reason}`);
+          return r;
+        }} />
       : undefined;
 
   return (
     <Shell helpKey="users" screen="Framework · Authorized users" panel={panel}>
-      <PageHeader title="Authorized users" meta={<span>{db.users.length} users · sign-in and passwords are handled by Clerk; passwords are never stored, shown or printed</span>}>
-        <button className="btn secondary no-print" onClick={resetDemo} title={storeMode === 'shared' ? 'Restores the sample university for everyone; your admin account is kept' : 'Restores the sample university in this browser'}>Reset sample data</button>
+      <PageHeader title="Authorized users" meta={<span>{db.users.length} users · passwords are kept by the sign-in service and are never stored, shown or printed here{scope !== 'all' ? ` · report: ${scope} only` : ''}</span>}>
+        <button className="btn secondary no-print" onClick={resetDemo} title={shared ? 'Restores the sample university for everyone; your admin account is kept' : 'Restores the sample university in this browser'}>Reset sample data</button>
         <button className="btn secondary" onClick={() => window.print()}>Print user report</button>
         <button className="btn" onClick={() => setMode({ kind: 'add' })}><Plus />Add user</button>
       </PageHeader>
 
-      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+      <div className="no-print" style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div className="field grow" style={{ minWidth: 200 }}><label className="label" htmlFor="q">Name, email or employee number</label><div className="input-wrap"><Search /><input id="q" className="input" placeholder="Use * as a wildcard, e.g. Delgado-*" value={q} onChange={(e) => setQ(e.target.value)} /></div></div>
         <div className="field" style={{ width: 200 }}><label className="label" htmlFor="area">Access area</label><select id="area" className="input" value={area} onChange={(e) => setArea(e.target.value)}><option value="">All subsystems</option>{AREAS.map((a) => <option key={a} value={a}>{a}</option>)}</select></div>
       </div>
 
       <div className="card">
         <div className="rows">
-          <div className="row head" style={{ gridTemplateColumns: COLS }}><span>Name · email</span><span>Emp #</span><span>Job title</span><span>Access areas</span><span></span></div>
+          <div className="row head" style={{ gridTemplateColumns: COLS }}><span>Name · email</span><span>Emp / student #</span><span>Job title</span><span>Access areas</span><span></span></div>
           {users.length === 0 && <Empty>No users match.</Empty>}
           {users.map((u) => (
-            <div key={u.id} className={`row${target?.id === u.id ? ' selected' : ''}`} style={{ gridTemplateColumns: COLS }}>
+            // The printed report covers the whole system or one subsystem (FW report); rows outside the chosen scope are left off the printout.
+            <div key={u.id} className={`row${target?.id === u.id ? ' selected' : ''}${scope !== 'all' && !u.access.includes(scope) ? ' no-print' : ''}`} style={{ gridTemplateColumns: COLS }}>
               <div><div className="title">{u.name}</div><div className="detail">{u.email} · {u.lastSignIn ? `last sign-in ${formatDateTime(u.lastSignIn)}` : 'never signed in'}</div></div>
-              <span className="sub">{u.id}</span>
+              <span className="sub">{u.id}{u.role === 'student' && <><br /><span className="xs">Student</span></>}</span>
               <span>{u.jobTitle}</span>
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{u.access.map((a) => <Chip key={a} kind={a === 'USERS' ? 'indigo' : 'neutral'}><span className="xs">{a}</span></Chip>)}</div>
-              <button className="btn secondary sm no-print" onClick={() => setMode({ kind: 'access', id: u.id })}>Manage access</button>
+              <button className="btn secondary sm no-print" onClick={() => setMode({ kind: 'edit', id: u.id })}>Manage user</button>
             </div>
           ))}
         </div>
-        <div className="stamp" style={{ gap: 10 }}>
+        <div className="stamp no-print" style={{ gap: 10 }}>
           <span>Showing {users.length} of {db.users.length}</span>
           <span className="right">Report scope:</span>
-          <select className="input sm no-print" style={{ width: 160 }} value={scope} onChange={(e) => setScope(e.target.value as typeof scope)} aria-label="Report scope"><option value="all">Whole system</option>{AREAS.map((a) => <option key={a} value={a}>{a} only</option>)}</select>
+          <select className="input sm" style={{ width: 160 }} value={scope} onChange={(e) => setScope(e.target.value as typeof scope)} aria-label="Report scope"><option value="all">Whole system</option>{AREAS.map((a) => <option key={a} value={a}>{a} only</option>)}</select>
         </div>
       </div>
     </Shell>
   );
 }
 
-function AccessPanel({ target, onClose, onAccess, last }: { target: User; onClose(): void; onAccess(a: Subsystem[]): void; last?: { text: string; by: string; at: string } }) {
+function AccessChecks({ value, onChange }: { value: Subsystem[]; onChange(a: Subsystem[]): void }) {
+  return <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{AREAS.map((a) => <label key={a} className="check"><input type="checkbox" checked={value.includes(a)} onChange={(e) => onChange(e.target.checked ? [...value, a] : value.filter((x) => x !== a))} />{a}</label>)}</div>;
+}
+
+/** Initialize or reset a password (FW-05, FW-07). The value goes to the sign-in service and is cleared from the form afterwards. */
+function PasswordFields({ value, onChange, confirm, onConfirm }: { value: string; onChange(v: string): void; confirm: string; onConfirm(v: string): void }) {
+  const [show, setShow] = useState(false);
   return (
-    <aside className="panel" aria-label="Manage access">
-      <div className="panel-head"><h2>Manage access</h2><button className="btn ghost sm icon" onClick={onClose} aria-label="Close"><X /></button></div>
-      <div className="panel-body">
-        <div><div className="title" style={{ fontSize: 16 }}>{target.name}</div><div className="detail" style={{ fontSize: 13, marginTop: 4 }}>{target.id} · {target.jobTitle}</div></div>
+    <>
+      <div className="field"><label className="label" htmlFor="pw">New password</label>
+        <div className="cluster" style={{ gap: 6 }}>
+          <input id="pw" className="input grow" type={show ? 'text' : 'password'} autoComplete="new-password" value={value} onChange={(e) => onChange(e.target.value)} />
+          <button type="button" className="btn secondary sm" onClick={() => { const t = temporaryPassword(); onChange(t); onConfirm(t); setShow(true); }}>Generate</button>
+        </div>
+        <span className="help">At least 10 characters with letters and digits. Give it to the user directly; it is not shown again.</span>
+      </div>
+      <div className="field"><label className="label" htmlFor="pw2">Confirm password</label><input id="pw2" className="input" type={show ? 'text' : 'password'} autoComplete="new-password" value={confirm} onChange={(e) => onConfirm(e.target.value)} /></div>
+    </>
+  );
+}
+
+function checkPassword(pw: string, confirm: string): Fail | null {
+  const issue = passwordIssue(pw);
+  if (issue) return issue;
+  if (pw !== confirm) return { reason: 'The two passwords do not match.', requirement: 'Type the same password in both fields, or choose Generate.' };
+  return null;
+}
+
+/** Maintain a user's name, job title, role, access areas and password (FW-04). Nothing changes until Save; Cancel restores. */
+function UserPanel({ target, shared, onClose, onSave, onPassword, last }: {
+  target: User; shared: boolean; onClose(): void; last?: { text: string; by: string; at: string };
+  onSave(c: Pick<User, 'name' | 'jobTitle' | 'role' | 'access'>): { ok: true } | ({ ok: false } & Fail);
+  onPassword(pw: string): Promise<{ ok: true; created: boolean } | { ok: false; reason: string }>;
+}) {
+  const [draft, setDraft] = useState({ name: target.name, jobTitle: target.jobTitle, role: target.role, access: target.access });
+  const [err, setErr] = useState<Fail | null>(null);
+  const [pw, setPw] = useState('');
+  const [pw2, setPw2] = useState('');
+  const [pwMsg, setPwMsg] = useState<{ kind: 'error' | 'success'; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    const r = onSave(draft);
+    if (!r.ok) setErr(r);
+  }
+  async function savePassword() {
+    const issue = checkPassword(pw, pw2);
+    if (issue) return setPwMsg({ kind: 'error', text: `${issue.reason} ${issue.requirement}` });
+    setBusy(true);
+    const r = await onPassword(pw);
+    setBusy(false);
+    setPw(''); setPw2('');
+    setPwMsg(r.ok ? { kind: 'success', text: r.created ? 'Password initialized. The user can sign in with it now.' : 'Password reset. The user was signed out everywhere and must use the new password.' } : { kind: 'error', text: r.reason });
+  }
+
+  return (
+    <aside className="panel" aria-label="Manage user">
+      <div className="panel-head"><h2>Manage user</h2><button className="btn ghost sm icon" onClick={onClose} aria-label="Close"><X /></button></div>
+      <form className="panel-body" onSubmit={submit} noValidate id="edituser">
         <div className="kv">
+          <span className="k">{target.role === 'student' ? 'Student ID' : 'Employee #'}</span><span>{target.id}</span>
           <span className="k">Signs in as</span><span>{target.email}</span>
           <span className="k">Last sign-in</span><span>{target.lastSignIn ? formatDateTime(target.lastSignIn) : 'Never'}</span>
-          <span className="k">Role</span><span style={{ textTransform: 'capitalize' }}>{target.role}</span>
         </div>
-        <div className="field">
-          <span className="label">Access areas <span className="req">*</span></span>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{AREAS.map((a) => <label key={a} className="check"><input type="checkbox" checked={target.access.includes(a)} onChange={(e) => onAccess(e.target.checked ? [...target.access, a] : target.access.filter((x) => x !== a))} />{a}</label>)}</div>
-          <span className="help">Changes apply the next time this user opens a screen and are recorded under your name.</span>
-        </div>
-        <Banner kind="info">Passwords are managed by the sign-in service. To reset one, the user chooses “Forgot password” on the sign-in page; nothing is stored or shown here.</Banner>
-      </div>
+        <div className="field"><label className="label" htmlFor="eu-name">Full name <span className="req">*</span></label><input id="eu-name" className="input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></div>
+        <div className="field"><label className="label" htmlFor="eu-title">Job title <span className="req">*</span></label><input id="eu-title" className="input" value={draft.jobTitle} onChange={(e) => setDraft({ ...draft, jobTitle: e.target.value })} /></div>
+        <div className="field"><label className="label" htmlFor="eu-role">Role <span className="req">*</span></label><select id="eu-role" className="input" value={draft.role} onChange={(e) => setDraft({ ...draft, role: e.target.value as Role })}>{ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}</select></div>
+        <div className="field"><span className="label">Access areas <span className="req">*</span></span><AccessChecks value={draft.access} onChange={(access) => setDraft({ ...draft, access })} /><span className="help">Changes apply the next time this user opens a screen and are recorded under your name.</span></div>
+        {err && <Banner kind="error"><strong>{err.reason}</strong> {err.requirement}</Banner>}
+
+        <div className="divider" />
+        <h3>Password</h3>
+        {shared
+          ? <PasswordFields value={pw} onChange={(v) => { setPw(v); setPwMsg(null); }} confirm={pw2} onConfirm={(v) => { setPw2(v); setPwMsg(null); }} />
+          : <Banner kind="info">Passwords can be set only while connected to the shared database.</Banner>}
+        {shared && <div><button type="button" className="btn secondary" disabled={busy || !pw} onClick={savePassword}>{busy ? 'Saving…' : target.lastSignIn ? 'Reset password' : 'Set password'}</button></div>}
+        {pwMsg && <Banner kind={pwMsg.kind}>{pwMsg.text}</Banner>}
+      </form>
       <div className="panel-foot">
-        <button className="btn secondary" onClick={onClose}>Done</button>
+        <button className="btn lg" type="submit" form="edituser">Save changes</button>
+        <button className="btn ghost" onClick={onClose}>Cancel and restore</button>
         {last && <Stamp bare action={`Last: ${last.text}`} by={last.by} at={last.at} />}
       </div>
     </aside>
   );
 }
 
-function AddPanel({ onClose, onAdd }: { onClose(): void; onAdd(u: Omit<User, 'lastSignIn' | 'clerkUserId'>): { ok: true } | { ok: false; reason: string; requirement: string } }) {
+function AddPanel({ shared, onClose, onAdd }: { shared: boolean; onClose(): void; onAdd(u: Omit<User, 'lastSignIn' | 'clerkUserId'>, password: string): Promise<{ ok: true } | ({ ok: false } & Fail)> }) {
   const [id, setId] = useState('');
   const [name, setName] = useState('');
   const [jobTitle, setJobTitle] = useState('');
   const [role, setRole] = useState<Role>('faculty');
   const [access, setAccess] = useState<Subsystem[]>(['FCI', 'GRADE']);
   const [email, setEmail] = useState('');
-  const [err, setErr] = useState<{ reason: string; requirement: string } | null>(null);
-  function submit(e: FormEvent) {
+  const [pw, setPw] = useState('');
+  const [pw2, setPw2] = useState('');
+  const [err, setErr] = useState<Fail | null>(null);
+  const isStudent = role === 'student';
+
+  function chooseRole(r: Role) {
+    setRole(r);
+    if (r === 'student') { setAccess(STUDENT_ACCESS); if (!jobTitle) setJobTitle('Student'); }
+  }
+  async function submit(e: FormEvent) {
     e.preventDefault();
     if (!jobTitle.trim()) return setErr({ reason: 'Job title is required.', requirement: 'Enter the user’s position, e.g. Lecturer, Biology.' });
     if (access.length === 0) return setErr({ reason: 'No access areas selected.', requirement: 'Choose at least one subsystem.' });
-    const r = onAdd({ id: id.trim(), name: name.trim(), email: email.trim(), jobTitle: jobTitle.trim(), role, access });
+    if (pw || pw2) { const issue = checkPassword(pw, pw2); if (issue) return setErr(issue); }
+    const r = await onAdd({ id: id.trim(), name: name.trim(), email: email.trim(), jobTitle: jobTitle.trim(), role, access }, pw);
     if (!r.ok) setErr(r);
   }
   return (
     <aside className="panel" aria-label="Add user">
       <div className="panel-head"><h2>Add user</h2><button className="btn ghost sm icon" onClick={onClose} aria-label="Close"><X /></button></div>
       <form className="panel-body" onSubmit={submit} noValidate id="adduser">
+        <div className="field"><label className="label">Role <span className="req">*</span></label><select className="input" value={role} onChange={(e) => chooseRole(e.target.value as Role)}>{ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}</select></div>
         <div className="field"><label className="label">Full name <span className="req">*</span></label><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Hyphenated names are accepted" /></div>
-        <div className="field"><label className="label">Employee number <span className="req">*</span></label><input className="input" inputMode="numeric" value={id} onChange={(e) => setId(e.target.value)} placeholder="5 to 8 digits" /></div>
+        <div className="field"><label className="label">{isStudent ? 'Student ID' : 'Employee number'} <span className="req">*</span></label><input className="input" inputMode="numeric" value={id} onChange={(e) => setId(e.target.value)} placeholder={isStudent ? '8 digits' : '5 to 8 digits'} />{isStudent && <span className="help">The account is identified by the student ID and opens that student’s record; a new record is started if none exists.</span>}</div>
         <div className="field"><label className="label">SDSU email <span className="req">*</span></label><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={`name@${ALLOWED_DOMAINS[0]}`} /><span className="help">The role takes effect the first time this address signs in.</span></div>
         <div className="field"><label className="label">Job title <span className="req">*</span></label><input className="input" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} /></div>
-        <div className="field"><label className="label">Role <span className="req">*</span></label><select className="input" value={role} onChange={(e) => setRole(e.target.value as Role)}><option value="student">Student</option><option value="faculty">Faculty</option><option value="advisor">Advisor</option><option value="registrar">Registrar staff</option><option value="admin">System administrator</option></select></div>
-        <div className="field"><span className="label">Access areas <span className="req">*</span></span><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{AREAS.map((a) => <label key={a} className="check"><input type="checkbox" checked={access.includes(a)} onChange={(e) => setAccess(e.target.checked ? [...access, a] : access.filter((x) => x !== a))} />{a}</label>)}</div></div>
+        <div className="field"><span className="label">Access areas <span className="req">*</span></span><AccessChecks value={access} onChange={setAccess} /></div>
+        {shared && <>
+          <div className="divider" />
+          <h3>Initial password <span className="sub">(optional)</span></h3>
+          <PasswordFields value={pw} onChange={setPw} confirm={pw2} onConfirm={setPw2} />
+        </>}
         {err && <Banner kind="error"><strong>{err.reason}</strong> {err.requirement}</Banner>}
       </form>
       <div className="panel-foot">

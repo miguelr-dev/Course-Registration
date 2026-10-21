@@ -82,7 +82,7 @@ and time.
 ### Authentication (Clerk)
 
 Sign-in and sign-up are handled by [Clerk](https://clerk.com); SignMeUp never
-stores or sees a password. Anyone with an **@sdsu.edu** address can create an
+stores a password. Anyone with an **@sdsu.edu** address can create an
 account and sign in. Two layers enforce that:
 
 1. The Clerk instance's **allowlist** contains `*@sdsu.edu` and is enforced on
@@ -101,10 +101,14 @@ What happens on first sign-in:
 - An address that an administrator has already added under *Authorized users*
   takes the role and access areas assigned there.
 
-Administrators manage roles from `/users`: add a person by employee number,
-SDSU email, job title, role and access areas, or change an existing user's
-access areas. Password resets happen on the sign-in page ("Forgot password"),
-not in the app.
+Administrators manage users from `/users`: add a person by employee number
+(students by their 8-digit student ID, which also starts their student record),
+SDSU email, job title, role and access areas, and change any of those later.
+Administrators can also **initialize or reset a password** there (FW-05,
+FW-07): the app sends it to `POST /api/password`, which checks the caller is an
+administrator and passes it to Clerk's Backend API. It is never written to the
+SignMeUp database. Users can still reset their own with "Forgot password" on the
+sign-in page.
 
 The sample university (students, staff, courses, grades) is still seeded into
 the browser so every screen has data. Its staff records use placeholder
@@ -117,7 +121,7 @@ sign-in page restores the seed.
 |---|---|---|
 | `VITE_CLERK_PUBLISHABLE_KEY` | `.env.local`, Vercel | Clerk publishable key (`pk_test_…` / `pk_live_…`). Public by design. Required; without it the app shows a configuration error instead of a sign-in form. |
 | `VITE_ADMIN_EMAILS` | `.env.local`, Vercel | Optional. Comma-separated sdsu.edu addresses that become administrators on first sign-in. |
-| `CLERK_SECRET_KEY` | `.env.local` only | Written by `clerk env pull`; the app does not use it (no backend). Never commit it or add it to Vercel. |
+| `CLERK_SECRET_KEY` | `.env.local`, Vercel (server only) | Written by `clerk env pull`. Used only by `api/password.ts` so administrators can set passwords; without it that feature reports that it is unavailable. Never commit it or prefix it with `VITE_`. |
 
 Both `VITE_` values are baked into the bundle at build time, so changing them
 on Vercel requires a redeploy.
