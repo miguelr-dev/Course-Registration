@@ -60,12 +60,12 @@ export function Shell({ children, panel, helpKey, screen }: { children: ReactNod
           <FloatingWindow id="help" title={`Help · ${topic.title}`} onClose={() => setHelp(false)}>
               <div className="drawer-body">
                 <p>{topic.summary}</p>
+                <h3>Windows</h3>
+                <p>This help window stays open while you work: drag its title bar to move it and its lower-right corner to resize it. New window opens the current screen in a separate browser window, so you can keep several screens side by side; changes saved in one window appear in the others.</p>
                 <h3>Fields on this screen</h3>
                 <dl>{topic.fields.map(([f, d]) => <><dt key={`${f}-t`}>{f}</dt><dd key={`${f}-d`}>{d}</dd></>)}</dl>
                 <h3>Standard controls</h3>
                 <p>Help and Print are on every screen. Cancel restores the entries you were changing to how they were before you started. Every completed action is labeled with your name, the date and the time.</p>
-                <h3>Windows</h3>
-                <p>This help window stays open while you work: drag its title bar to move it and its lower-right corner to resize it. New window opens the current screen in a separate browser window, so you can keep several screens side by side; changes saved in one window appear in the others.</p>
               </div>
           </FloatingWindow>
         )}
