@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Link } from 'react-router-dom';
 import { useStore } from '../data/store';
+import { MODULES } from '../modules';
+import { FloatingWindow, openInNewWindow } from './FloatingWindow';
 import { HELP } from './help';
 import { Help, NewWindow, Print, SignOut, UserIcon, X } from './icons';
 import { Banner } from './ui';
-import { FloatingWindow, openInNewWindow } from './FloatingWindow';
-import { MODULES } from '../modules';
 
 interface ShellCtx { toast(msg: string): void; }
 const ShellContext = createContext<ShellCtx>({ toast: () => {} });
