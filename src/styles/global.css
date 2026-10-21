@@ -171,6 +171,10 @@ textarea.input { height: auto; min-height: 72px; padding: 10px 12px; resize: ver
 .drawer-body dl { display: grid; grid-template-columns: 140px 1fr; gap: 6px 12px; margin: 0; }
 .drawer-body dt { color: var(--muted); }
 .drawer-body dd { margin: 0; }
+.window { position: fixed; z-index: 25; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18); resize: both; overflow: hidden; min-width: 300px; min-height: 200px; }
+.window-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 10px 20px; border-bottom: 1px solid var(--border); background: var(--bg); cursor: move; user-select: none; touch-action: none; }
+.window-bar h2 { font-size: 14px; margin: 0; }
+.window-body { flex: 1; overflow: auto; }
 .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--text); color: #fff; padding: 10px 16px; border-radius: var(--radius); font-size: 13px; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.2); z-index: 30; display: flex; gap: 10px; align-items: center; }
 
 /* Login */

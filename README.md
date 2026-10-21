@@ -45,12 +45,14 @@ Course-Registration/
 ├── docs/
 │   ├── REQUIREMENTS.md       # full project requirements (markdown)
 │   ├── DESIGN-HANDOFF.md     # UI direction, design canvas link, Claude Design prompt
+│   ├── ARCHITECTURE.md       # framework vs. modules; how to add or replace a module
 │   └── CourseRegReqs.docx    # original requirements document
 ├── .env.example              # Clerk publishable key + optional admin list
 ├── src/
 │   ├── data/                 # types, sample data seed, in-browser store
 │   ├── lib/                  # registration rules, GPA/statistics, wildcard search, formatting
 │   ├── components/           # app shell, help drawer, icons, shared UI
+│   ├── modules.ts            # subsystem registry: menu, routes, access area per module
 │   ├── screens/              # one file per screen (see below)
 │   └── styles/global.css     # design tokens and component styles
 ├── db/schema.sql             # relational schema for Supabase (normalized tables + document store)

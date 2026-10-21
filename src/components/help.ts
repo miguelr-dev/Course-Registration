@@ -1,4 +1,4 @@
-import type { HelpTopic, Subsystem } from '../data/types';
+import type { HelpTopic } from '../data/types';
 
 export type { HelpTopic };
 
@@ -37,12 +37,3 @@ export const HELP: Record<string, HelpTopic> = {
     fields: [['Employee number', 'Mandatory. 5 to 8 digits; students use their student ID.'], ['Email', 'Mandatory. An @sdsu.edu address not already assigned.'], ['Job title', 'Mandatory.'], ['Access areas', 'Mandatory. At least one subsystem.']],
   },
 };
-
-export const SUBSYSTEMS: { code: Subsystem; label: string; path: string }[] = [
-  { code: 'ER', label: 'Student Record', path: '/record' },
-  { code: 'REG', label: 'Registration', path: '/' },
-  { code: 'MAJOR', label: 'Major Requirements', path: '/outline' },
-  { code: 'FCI', label: 'Faculty & Courses', path: '/faculty' },
-  { code: 'GRADE', label: 'Course Grades', path: '/grades' },
-  { code: 'USERS', label: 'Authorized Users', path: '/users' },
-];

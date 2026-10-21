@@ -19,3 +19,4 @@ export const Note = ({ size = 14, ...p }: P) => <svg {...base(size, 1.6)} {...p}
 export const Lock = ({ size = 14, ...p }: P) => <svg {...base(size, 1.6)} {...p}><rect x="3" y="7" width="10" height="7" rx="1.2" /><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" /></svg>;
 export const Plus = ({ size = 14, ...p }: P) => <svg {...base(size, 2)} {...p}><path d="M8 3v10" /><path d="M3 8h10" /></svg>;
 export const SignOut = ({ size = 14, ...p }: P) => <svg {...base(size, 1.6)} {...p}><path d="M6 2.5H3v11h3" /><path d="M10 5l3 3-3 3" /><path d="M13 8H6.5" /></svg>;
+export const NewWindow = ({ size = 16, ...p }: P) => <svg {...base(size, 1.6)} {...p}><rect x="2" y="4.5" width="9.5" height="9" rx="1" /><path d="M5 4.5V2.5h8.5v8.5h-2" /></svg>;
