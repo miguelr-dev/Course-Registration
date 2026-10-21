@@ -29,15 +29,24 @@ export function normalizeStudentInfo(info: StudentInfo): StudentInfo {
   };
 }
 
-/** The first problem with the entry, in screen order, or null. Messages state the reason and what is needed (GEN-30). */
-export function studentInfoIssue(db: Db, info: StudentInfo, today = new Date().toISOString().slice(0, 10)): (NameIssue & { field: keyof StudentInfo }) | null {
-  const n = normalizeStudentInfo(info);
+/**
+ * The first problem with the entry, in screen order, or null. Messages state the reason and what
+ * is needed (GEN-30). `only` limits the check to the fields a user is allowed to change.
+ */
+export function studentInfoIssue(db: Db, info: StudentInfo, today = new Date().toISOString().slice(0, 10), only?: (keyof StudentInfo)[]): (NameIssue & { field: keyof StudentInfo }) | null {
+  return firstIssue(db, normalizeStudentInfo(info), today, only);
+}
+
+function firstIssue(db: Db, n: StudentInfo, today: string, only?: (keyof StudentInfo)[]): (NameIssue & { field: keyof StudentInfo }) | null {
+  const skip = (f: keyof StudentInfo) => !!only && !only.includes(f);
   for (const [field, required] of [['firstName', true], ['middleName', false], ['lastName', true]] as const) {
+    if (skip(field)) continue;
     const issue = nameIssue(n[field] ?? '', LABELS[field], required);
     if (issue) return { ...issue, field };
   }
-  if (n.phone.replace(/\D/g, '').length !== 10) return { field: 'phone', reason: 'Telephone number is not complete.', requirement: 'Enter 10 digits including the area code, e.g. (310) 555-0142.' };
-  if (n.address.length < 8) return { field: 'address', reason: 'Address is missing or too short.', requirement: 'Enter street, city, state and ZIP code.' };
+  if (!skip('phone') && n.phone.replace(/\D/g, '').length !== 10) return { field: 'phone', reason: 'Telephone number is not complete.', requirement: 'Enter 10 digits including the area code, e.g. (310) 555-0142.' };
+  if (!skip('address') && n.address.length < 8) return { field: 'address', reason: 'Address is missing or too short.', requirement: 'Enter street, city, state and ZIP code.' };
+  if (only) return null; // the remaining checks cover fields only staff can change
   if (!/^\d{4}-\d{2}-\d{2}$/.test(n.dateOfBirth) || Number.isNaN(Date.parse(n.dateOfBirth))) return { field: 'dateOfBirth', reason: 'Date of birth is not a valid date.', requirement: 'Choose the date from the calendar (YYYY-MM-DD).' };
   const age = Number(today.slice(0, 4)) - Number(n.dateOfBirth.slice(0, 4));
   if (n.dateOfBirth >= today || age < 13 || age > 100) return { field: 'dateOfBirth', reason: 'Date of birth is outside the accepted range.', requirement: 'Students must be between 13 and 100 years old.' };

@@ -32,6 +32,12 @@ describe('student information', () => {
     expect(studentInfoIssue(db, info({ majorId: 'MATH-MIN' }), TODAY)?.field).toBe('majorId');
     expect(studentInfoIssue(db, info({ minorId: 'CS-BS' }), TODAY)?.field).toBe('minorId');
   });
+  it('checks only the fields a student may change on their own record', () => {
+    const incomplete = info({ dateOfBirth: '', phone: '6195550100', address: '5500 Campanile Dr, San Diego, CA 92182' });
+    expect(studentInfoIssue(db, incomplete, TODAY)?.field).toBe('dateOfBirth');
+    expect(studentInfoIssue(db, incomplete, TODAY, ['phone', 'address'])).toBeNull();
+    expect(studentInfoIssue(db, info({ phone: '555' }), TODAY, ['phone', 'address'])?.field).toBe('phone');
+  });
   it('lists key information missing from a new account', () => {
     expect(missingKeyInfo(maria)).toEqual([]);
     expect(missingKeyInfo({ ...maria, phone: '', dateOfBirth: '' })).toEqual(['phone', 'dateOfBirth']);

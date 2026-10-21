@@ -6,7 +6,7 @@ import type { Db, NoteCategory, OutlineStatus, RegistrationType, Subsystem, User
 import { nowIso } from '../lib/format';
 import { registrationIssues, type EligibilityIssue } from '../lib/rules';
 import { adminEmails, isAllowedEmail, provisionUser } from '../lib/auth';
-import { changedFields, LABELS, normalizeStudentInfo, studentInfoIssue, type StudentInfo } from '../lib/student';
+import { changedFields, LABELS, normalizeStudentInfo, SELF_EDITABLE, studentInfoIssue, type StudentInfo } from '../lib/student';
 
 const STORAGE_KEY = 'signmeup.db.v4'; // local cache of the shared document (and the whole store when the API is unavailable)
 const STAMP_KEY = 'signmeup.stamped.v4';
@@ -268,9 +268,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     updateStudent(studentId, info) {
       const student = db.students.find((s) => s.id === studentId);
       if (!student) return { ok: false, field: 'lastName', reason: `Student ${studentId} was not found.`, requirement: 'Choose a student from the search.' };
-      const issue = studentInfoIssue(db, info);
+      // A student may change only their own contact details; staff entries must leave the whole record valid.
+      const own = user?.role === 'student';
+      if (own && user?.studentId !== studentId) return { ok: false, field: 'phone', reason: 'You can change only your own record.', requirement: 'Open your own student record.' };
+      const issue = studentInfoIssue(db, info, undefined, own ? SELF_EDITABLE : undefined);
       if (issue) return { ok: false, ...issue };
-      const next = normalizeStudentInfo(info);
+      const normalized = normalizeStudentInfo(info);
+      const next = own ? { ...student, phone: normalized.phone, address: normalized.address } : normalized;
       const changed = changedFields(student, next);
       if (!changed.length) return { ok: true };
       commit((d) => stamp({
