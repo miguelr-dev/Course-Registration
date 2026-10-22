@@ -6,6 +6,7 @@ import type { Db, NoteCategory, OutlineStatus, RegistrationType, Subsystem, User
 import { nowIso } from '../lib/format';
 import { registrationIssues, type EligibilityIssue } from '../lib/rules';
 import { adminEmails, isAllowedEmail, provisionUser } from '../lib/auth';
+import { changedFields, LABELS, normalizeStudentInfo, SELF_EDITABLE, studentInfoIssue, type StudentInfo } from '../lib/student';
 
 const STORAGE_KEY = 'signmeup.db.v4'; // local cache of the shared document (and the whole store when the API is unavailable)
 const STAMP_KEY = 'signmeup.stamped.v4';
@@ -50,6 +51,7 @@ interface StoreApi {
   drop(studentId: string, scheduleNo: string): void;
   requestWaiver(studentId: string, courseId: string, note: string): void;
   appendNote(studentId: string, category: NoteCategory, text: string): void;
+  updateStudent(studentId: string, info: StudentInfo): { ok: true } | { ok: false; field: keyof StudentInfo; reason: string; requirement: string };
   setOutlineStatus(studentId: string, courseId: string, status: OutlineStatus, note?: string): void;
   addOutlineCourse(studentId: string, courseId: string): void;
   setGrade(scheduleNo: string, studentId: string, grade: string, note?: string): void;
@@ -261,6 +263,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ...d,
         students: d.students.map((s) => (s.id === studentId ? { ...s, notes: [...s.notes, { at, byEmployeeId: user?.id ?? '0', category, text }] } : s)),
       }, 'ER', `Appended ${category} note to student ${studentId}`));
+    },
+
+    updateStudent(studentId, info) {
+      const student = db.students.find((s) => s.id === studentId);
+      if (!student) return { ok: false, field: 'lastName', reason: `Student ${studentId} was not found.`, requirement: 'Choose a student from the search.' };
+      // A student may change only their own contact details; staff entries must leave the whole record valid.
+      const own = user?.role === 'student';
+      if (own && user?.studentId !== studentId) return { ok: false, field: 'phone', reason: 'You can change only your own record.', requirement: 'Open your own student record.' };
+      const issue = studentInfoIssue(db, info, undefined, own ? SELF_EDITABLE : undefined);
+      if (issue) return { ok: false, ...issue };
+      const normalized = normalizeStudentInfo(info);
+      const next = own ? { ...student, phone: normalized.phone, address: normalized.address } : normalized;
+      const changed = changedFields(student, next);
+      if (!changed.length) return { ok: true };
+      commit((d) => stamp({
+        ...d,
+        students: d.students.map((s) => (s.id === studentId ? { ...s, ...next } : s)),
+      }, 'ER', `Updated ${changed.map((f) => LABELS[f].toLowerCase()).join(', ')} for student ${studentId}`));
+      return { ok: true };
     },
 
     setOutlineStatus(studentId, courseId, status, note) {
