@@ -38,6 +38,24 @@ export class SyncClient {
     }
   }
 
+  /** Administrator only: initialize or reset a user's sign-in password. The password goes to the sign-in service, never into the document. */
+  async setPassword(userId: string, password: string): Promise<{ ok: true; created: boolean } | { ok: false; reason: string }> {
+    try {
+      const token = await this.getToken();
+      const res = await fetch('/api/password', {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ userId, password }),
+      });
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      const json = isJson ? ((await res.json()) as Record<string, unknown>) : null;
+      if (res.status === 200 && json) return { ok: true, created: Boolean(json.created) };
+      return { ok: false, reason: String(json?.reason ?? `Password service returned ${res.status}.`) };
+    } catch (e) {
+      return { ok: false, reason: e instanceof Error ? e.message : 'Network error.' };
+    }
+  }
+
   async save(version: number, db: Db): Promise<SaveResult> {
     try {
       const { status, json } = await this.request('PUT', { version, db });

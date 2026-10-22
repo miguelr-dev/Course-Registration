@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useAuth, useClerk, useSession, useUser } from '@clerk/react';
 import { createSeed } from './seed';
 import { SyncClient } from './sync';
-import type { Db, NoteCategory, OutlineStatus, RegistrationType, Subsystem, User } from './types';
+import type { Db, NoteCategory, OutlineStatus, RegistrationType, Student, Subsystem, User } from './types';
 import { nowIso } from '../lib/format';
 import { registrationIssues, type EligibilityIssue } from '../lib/rules';
 import { adminEmails, isAllowedEmail, provisionUser } from '../lib/auth';
@@ -58,6 +58,17 @@ interface StoreApi {
   addGradeNote(scheduleNo: string, text: string): void;
   addUser(u: Omit<User, 'lastSignIn' | 'clerkUserId'>): { ok: true } | { ok: false; reason: string; requirement: string };
   updateUserAccess(userId: string, access: Subsystem[]): void;
+  updateUser(userId: string, changes: Pick<User, 'name' | 'jobTitle' | 'role' | 'access'>): { ok: true } | { ok: false; reason: string; requirement: string };
+  setPassword(userId: string, password: string): Promise<{ ok: true; created: boolean } | { ok: false; reason: string }>;
+}
+
+/** A student account is identified by its student ID (FW-08); this is the record it attaches to until the registrar completes it. */
+function skeletonStudent(id: string, name: string): Student {
+  const parts = name.trim().split(/\s+/);
+  return {
+    id, firstName: parts[0] ?? '', lastName: parts.slice(1).join(' '), phone: '', address: '', dateOfBirth: '',
+    majorId: 'UNDECLARED', graduate: false, standing: 'Good standing · New account', completed: [], transfer: [], notes: [],
+  };
 }
 
 const Ctx = createContext<StoreApi | null>(null);
@@ -339,12 +350,53 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!u.name.trim()) return { ok: false, reason: 'Name is required.', requirement: 'Enter the user’s full name; hyphenated names are accepted.' };
       if (!isAllowedEmail(email)) return { ok: false, reason: 'Email address is not an SDSU address.', requirement: 'Enter the person’s @sdsu.edu address; that is what they sign in with.' };
       if (db.users.some((x) => x.email.toLowerCase() === email)) return { ok: false, reason: `${email} is already assigned to another user.`, requirement: 'Enter an address that no other user has.' };
+      if (u.role === 'student') {
+        if (!/^\d{8}$/.test(u.id)) return { ok: false, reason: 'Student ID is not valid.', requirement: 'Student accounts use the 8-digit student ID as their number.' };
+        const added: User = { ...u, email, studentId: u.id };
+        commit((d) => stamp({
+          ...d,
+          users: [...d.users, added],
+          students: d.students.some((s) => s.id === u.id) ? d.students : [...d.students, skeletonStudent(u.id, u.name)],
+        }, 'FRAMEWORK', `Added student account ${u.name} (${u.id}) for ${email}`));
+        return { ok: true };
+      }
       commit((d) => stamp({ ...d, users: [...d.users, { ...u, email }] }, 'FRAMEWORK', `Added user ${u.name} (${u.id}) for ${email}`));
       return { ok: true };
     },
 
     updateUserAccess(userId, access) {
       commit((d) => stamp({ ...d, users: d.users.map((u) => (u.id === userId ? { ...u, access } : u)) }, 'FRAMEWORK', `Updated access areas for ${userId}: ${access.join(', ') || 'none'}`));
+    },
+
+    updateUser(userId, changes) {
+      const prev = db.users.find((u) => u.id === userId);
+      if (!prev) return { ok: false, reason: `User ${userId} was not found.`, requirement: 'Choose a user from the list.' };
+      const name = changes.name.trim().replace(/\s+/g, ' ');
+      const jobTitle = changes.jobTitle.trim();
+      if (!name) return { ok: false, reason: 'Name is required.', requirement: 'Enter the user’s full name; hyphenated names are accepted.' };
+      if (!jobTitle) return { ok: false, reason: 'Job title is required.', requirement: 'Enter the user’s position, e.g. Lecturer, Biology.' };
+      if (!changes.access.length) return { ok: false, reason: 'No access areas selected.', requirement: 'Choose at least one subsystem.' };
+      if (userId === user?.id && (changes.role !== 'admin' || !changes.access.includes('USERS'))) return { ok: false, reason: 'You cannot remove your own administrator access.', requirement: 'Keep the System administrator role and the USERS area, or ask another administrator to change it.' };
+      if (changes.role === 'student' && !/^\d{8}$/.test(userId)) return { ok: false, reason: 'Only an account numbered with an 8-digit student ID can be a student.', requirement: 'Add a new student account under the student ID instead.' };
+      const next: User = { ...prev, name, jobTitle, role: changes.role, access: changes.access, ...(changes.role === 'student' ? { studentId: userId } : {}) };
+      const changed = (['name', 'jobTitle', 'role', 'access'] as const).filter((k) => String(prev[k]) !== String(next[k]));
+      if (!changed.length) return { ok: true };
+      const labels = { name: 'name', jobTitle: 'job title', role: 'role', access: 'access areas' };
+      commit((d) => stamp({
+        ...d,
+        users: d.users.map((u) => (u.id === userId ? next : u)),
+        students: next.studentId && !d.students.some((s) => s.id === next.studentId) ? [...d.students, skeletonStudent(next.studentId, name)] : d.students,
+      }, 'FRAMEWORK', `Updated ${changed.map((k) => labels[k]).join(', ')} for user ${userId}`));
+      return { ok: true };
+    },
+
+    async setPassword(userId, password) {
+      const target = db.users.find((u) => u.id === userId);
+      if (user?.role !== 'admin') return { ok: false, reason: 'Only a system administrator can set passwords.' };
+      if (mode !== 'shared' || !sync.current) return { ok: false, reason: 'Passwords can only be set while connected to the shared database.' };
+      const r = await sync.current.setPassword(userId, password);
+      if (r.ok) commit((d) => stamp(d, 'FRAMEWORK', `${r.created ? 'Initialized' : 'Reset'} password for ${target?.name ?? userId} (${userId})`));
+      return r;
     },
   };
 
