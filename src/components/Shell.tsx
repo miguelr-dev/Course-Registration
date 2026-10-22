@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Link } from 'react-router-dom';
 import { useStore } from '../data/store';
+import { RoleSwitcher, ViewingBanner } from './RoleSwitcher';
 import { HELP, SUBSYSTEMS } from './help';
 import { Help, Print, SignOut, UserIcon, X } from './icons';
 import { Banner } from './ui';
@@ -35,6 +36,7 @@ export function Shell({ children, panel, helpKey, screen }: { children: ReactNod
               </NavLink>
             ))}
           </div>
+          <RoleSwitcher />
           <div className="nav-user">
             <UserIcon />
             <span className="grow"><span className="name">{user?.name}</span><br />{user?.jobTitle} · {user?.id}</span>
@@ -43,6 +45,7 @@ export function Shell({ children, panel, helpKey, screen }: { children: ReactNod
         </nav>
         <div className={`main${panel ? ' narrow' : ''}`}>
           <HeaderActionsContext.Provider value={{ openHelp: () => setHelp(true) }}>
+            <ViewingBanner />
             {syncError && (
               <div className="no-print" style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                 <div className="grow"><Banner kind={mode === 'local' ? 'warn' : 'error'}>{syncError}</Banner></div>

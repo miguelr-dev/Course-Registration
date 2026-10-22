@@ -6,9 +6,15 @@ import type { Db, NoteCategory, OutlineStatus, RegistrationType, Subsystem, User
 import { nowIso } from '../lib/format';
 import { registrationIssues, type EligibilityIssue } from '../lib/rules';
 import { adminEmails, isAllowedEmail, provisionUser } from '../lib/auth';
+import { canSwitchRoles, effectiveUser, type ViewAs } from '../lib/viewAs';
 
 const STORAGE_KEY = 'signmeup.db.v4'; // local cache of the shared document (and the whole store when the API is unavailable)
 const STAMP_KEY = 'signmeup.stamped.v4';
+const VIEW_KEY = 'signmeup.viewAs'; // role switcher choice, kept for this browser tab only
+
+function loadView(): ViewAs | null {
+  try { return JSON.parse(sessionStorage.getItem(VIEW_KEY) ?? 'null') as ViewAs | null; } catch { return null; }
+}
 const POLL_MS = 15000;
 
 function loadDb(): Db {
@@ -38,7 +44,10 @@ type Mutation = (d: Db) => Db;
 
 interface StoreApi {
   db: Db;
-  user: User | null;
+  user: User | null; // who the screens act as: the signed-in user, or the role an administrator is viewing as (FW-09)
+  realUser: User | null; // always the signed-in user
+  viewAs: ViewAs | null;
+  setViewAs(v: ViewAs | null): void;
   session: Session;
   mode: StoreMode;
   syncError: string | null;
@@ -65,6 +74,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<StoreMode>('loading');
   const [syncError, setSyncError] = useState<string | null>(null);
   const [lastSaveMs, setLastSaveMs] = useState<number | null>(null);
+  const [viewAs, setViewAsState] = useState<ViewAs | null>(loadView);
   const clerk = useClerk();
   const { getToken } = useAuth();
   const { isLoaded, isSignedIn, user: clerkUser } = useUser();
@@ -84,7 +94,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const email = clerkUser?.primaryEmailAddress?.emailAddress.trim().toLowerCase() ?? null;
   const denied = !!email && !isAllowedEmail(email);
   const session: Session = { ready: isLoaded && (!email || denied || mode !== 'loading'), email, denied };
-  const user = useMemo(() => (email && !denied ? db.users.find((u) => u.email.toLowerCase() === email) ?? null : null), [db.users, email, denied]);
+  const realUser = useMemo(() => (email && !denied ? db.users.find((u) => u.email.toLowerCase() === email) ?? null : null), [db.users, email, denied]);
+  const user = useMemo(() => effectiveUser(realUser, viewAs), [realUser, viewAs]);
 
   const flush = useCallback(async () => {
     if (flushing.current || !sync.current) return;
@@ -219,10 +230,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }), [user]);
 
   const api: StoreApi = {
-    db, user, session, mode, syncError, lastSaveMs,
+    db, user, realUser, viewAs: canSwitchRoles(realUser) ? viewAs : null, session, mode, syncError, lastSaveMs,
     dismissSyncError() { setSyncError(null); },
 
-    signOut() { void clerk.signOut({ redirectUrl: '/login' }); },
+    setViewAs(v) {
+      if (v && !canSwitchRoles(realUser)) return;
+      const next = v && v.role !== 'admin' ? v : null;
+      setViewAsState(next);
+      try { if (next) sessionStorage.setItem(VIEW_KEY, JSON.stringify(next)); else sessionStorage.removeItem(VIEW_KEY); } catch { /* not remembered across reloads */ }
+    },
+
+    signOut() { try { sessionStorage.removeItem(VIEW_KEY); } catch { /* nothing stored */ } void clerk.signOut({ redirectUrl: '/login' }); },
 
     resetDemo() {
       if (mode === 'shared' && user?.role !== 'admin') { setSyncError('Only an administrator can reset the shared sample data.'); return; }
