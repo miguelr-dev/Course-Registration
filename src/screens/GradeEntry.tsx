@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../data/store';
 import { Shell, PageHeader, Dot, useToast } from '../components/Shell';
@@ -8,6 +8,7 @@ import { courseOf, gradeStats, LETTER_GRADES, letterFor } from '../lib/rules';
 import { formatDate, formatDateTime, formatTimeRange } from '../lib/format';
 import { fillerName } from '../data/seed';
 import { wildcardMatch } from '../lib/wildcard';
+import { useEscapeToCancel, useWarnBeforeLeaving } from '../components/draft';
 
 const COLS = '1.1fr 90px 90px 110px 1.7fr';
 
@@ -23,6 +24,12 @@ export default function GradeEntry() {
   const [noteFor, setNoteFor] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
   const [general, setGeneral] = useState('');
+  // Grades chosen but not yet saved, by student ID. Cancel and restore empties it (GEN-33, GEN-34).
+  const [pending, setPending] = useState<Record<string, string>>({});
+  const pendingCount = Object.keys(pending).length;
+  useEffect(() => { setPending({}); setNoteFor(null); }, [offering?.scheduleNo]);
+  useWarnBeforeLeaving(pendingCount > 0);
+  useEscapeToCancel(pendingCount > 0 || noteFor !== null, () => { if (noteFor !== null) setNoteFor(null); else setPending({}); });
 
   const today = new Date().toISOString().slice(0, 10);
   const windowOpen = today >= db.gradeWindow.opens && today <= db.gradeWindow.closes;
@@ -45,6 +52,23 @@ export default function GradeEntry() {
   const lastGrade = [...db.transactions].reverse().find((t) => t.subsystem === 'GRADE');
   const pct = (n: number) => (stats.registered ? Math.round((n / stats.registered) * 100) : 0);
 
+  function chooseGrade(studentId: string, stored: string, value: string) {
+    setPending((p) => {
+      const next = { ...p };
+      if (value === stored) delete next[studentId]; else next[studentId] = value;
+      return next;
+    });
+  }
+  function saveGrades() {
+    for (const [studentId, grade] of Object.entries(pending)) setGrade(offering!.scheduleNo, studentId, grade);
+    toast(`${pendingCount} ${pendingCount === 1 ? 'grade' : 'grades'} saved · recorded under ${user!.name}`);
+    setPending({});
+  }
+  function switchCourse(scheduleNo: string) {
+    if (pendingCount && !confirm(`Discard ${pendingCount} unsaved ${pendingCount === 1 ? 'grade' : 'grades'}? They will be restored to their saved values.`)) return;
+    nav(`/grades/${scheduleNo}`);
+  }
+
   function optionsFor(type: string) {
     if (type === 'audit') return ['AU'];
     if (type === 'crnc') return ['CR', 'NC', 'I'];
@@ -58,7 +82,7 @@ export default function GradeEntry() {
         meta={<><span>{db.departments.find((d) => d.id === course.deptId)?.name}</span><Dot /><span>Schedule {offering.scheduleNo}</span><Dot /><span>{offering.days} {formatTimeRange(offering.start, offering.end)} · {offering.location}</span><Dot /><span>Primary instructor {instructor?.name}</span><Dot /><span>{course.units} units</span><Dot /><span>{db.term}</span></>}
       >
         {mine.length > 1 && (
-          <select className="input no-print" style={{ width: 220 }} value={offering.scheduleNo} onChange={(e) => nav(`/grades/${e.target.value}`)} aria-label="Course">
+          <select className="input no-print" style={{ width: 220 }} value={offering.scheduleNo} onChange={(e) => switchCourse(e.target.value)} aria-label="Course">
             {mine.map((o) => <option key={o.scheduleNo} value={o.scheduleNo}>{o.courseId} · {o.scheduleNo}</option>)}
           </select>
         )}
@@ -81,7 +105,7 @@ export default function GradeEntry() {
                   <span className="title">{name}</span>
                   <span className="sub">{r.studentId}</span>
                   <span className="sub">{r.type === 'letter' ? 'Letter' : r.type === 'crnc' ? 'CR / NC' : 'Audit'}</span>
-                  <select className="input sm" style={{ width: 100 }} value={r.grade ?? ''} disabled={!canEnter} aria-label={`Grade for ${name}`} onChange={(e) => { setGrade(offering.scheduleNo, r.studentId, e.target.value); toast(`Grade ${e.target.value || 'cleared'} for ${name}`); }}>
+                  <select className={`input sm${r.studentId in pending ? ' changed' : ''}`} style={{ width: 100 }} value={pending[r.studentId] ?? r.grade ?? ''} disabled={!canEnter} aria-label={`Grade for ${name}`} title={r.studentId in pending ? `Unsaved · was ${r.grade || '—'}` : undefined} onChange={(e) => chooseGrade(r.studentId, r.grade ?? '', e.target.value)}>
                     <option value="">—</option>
                     {optionsFor(r.type).map((g) => <option key={g} value={g}>{g}</option>)}
                   </select>
@@ -100,6 +124,16 @@ export default function GradeEntry() {
               </div>
             ))}
           </div>
+          {pendingCount > 0 && (
+            <div className="card-foot no-print" style={{ background: 'var(--surface)' }}>
+              <div className="cluster" style={{ gap: 10 }}>
+                <span className="strong grow">{pendingCount} unsaved {pendingCount === 1 ? 'grade' : 'grades'}</span>
+                <button className="btn" onClick={saveGrades}>Save grades</button>
+                <button className="btn ghost" onClick={() => setPending({})}>Cancel and restore</button>
+              </div>
+              <span className="help">Grades are not recorded until you save. Cancel and restore (or Esc) puts every changed grade back to its saved value.</span>
+            </div>
+          )}
           {lastGrade && <div className="stamp"><Clock /><span>{lastGrade.text} by {lastGrade.by} · {formatDateTime(lastGrade.at)}</span></div>}
         </div>
 
@@ -122,7 +156,7 @@ export default function GradeEntry() {
               {notes.length === 0 && <span className="sub">No general notes yet.</span>}
               {notes.map((n) => <div key={n.at} style={{ fontSize: 13, lineHeight: 1.5 }}>{n.text}<div className="sub" style={{ marginTop: 4 }}>{n.by} · {formatDateTime(n.at)}</div></div>)}
               <textarea className="input no-print" style={{ minHeight: 56 }} placeholder="Add a general note" value={general} onChange={(e) => setGeneral(e.target.value)} />
-              <div className="no-print"><button className="btn secondary sm" disabled={!general.trim()} onClick={() => { addGradeNote(offering.scheduleNo, general.trim()); setGeneral(''); toast('General note appended'); }}>Append note</button></div>
+              <div className="no-print cluster"><button className="btn secondary sm" disabled={!general.trim()} onClick={() => { addGradeNote(offering.scheduleNo, general.trim()); setGeneral(''); toast('General note appended'); }}>Append note</button>{general && <button className="btn ghost sm" onClick={() => setGeneral('')}>Cancel</button>}</div>
             </div>
           </div>
         </div>
