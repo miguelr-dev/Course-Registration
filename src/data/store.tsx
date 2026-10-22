@@ -11,6 +11,8 @@ import { changedFields, LABELS, normalizeStudentInfo, SELF_EDITABLE, studentInfo
 const STORAGE_KEY = 'signmeup.db.v4'; // local cache of the shared document (and the whole store when the API is unavailable)
 const STAMP_KEY = 'signmeup.stamped.v4';
 const POLL_MS = 15000;
+// Tells this user's other SignMeUp windows that the shared document changed, so they reload it at once (GEN-01).
+const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('signmeup.db') : null;
 
 function loadDb(): Db {
   try {
@@ -114,6 +116,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           serverDb.current = candidate;
           version.current = r.version;
           pending.current.splice(0, batch.length);
+          channel?.postMessage({ version: r.version });
         } else if (r.kind === 'conflict') {
           // Someone else wrote first: rebase our pending changes on their document and try again.
           serverDb.current = r.db ?? createSeed();
@@ -178,11 +181,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, [isLoaded, isSignedIn, email, denied, mode]);
 
+  // Local mode: other windows of this browser write the same storage key; follow their changes.
+  useEffect(() => {
+    if (mode !== 'local') return;
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== STORAGE_KEY || !e.newValue) return;
+      try { setDb(JSON.parse(e.newValue) as Db); } catch { /* ignore a partial write */ }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [mode]);
+
   // Pick up other people's changes while idle.
   useEffect(() => {
     if (mode !== 'shared') return;
-    const tick = async () => {
-      if (document.visibilityState !== 'visible' || pending.current.length || flushing.current || !sync.current) return;
+    const tick = async (evenIfHidden = false) => {
+      if ((!evenIfHidden && document.visibilityState !== 'visible') || pending.current.length || flushing.current || !sync.current) return;
       const r = await sync.current.load();
       if (r.kind === 'ok' && r.db && r.version !== version.current && !pending.current.length) {
         serverDb.current = r.db;
@@ -190,9 +204,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setDb(r.db);
       }
     };
+    const onVisible = () => { void tick(); };
     const id = window.setInterval(() => { void tick(); }, POLL_MS);
-    document.addEventListener('visibilitychange', tick);
-    return () => { window.clearInterval(id); document.removeEventListener('visibilitychange', tick); if (retryTimer.current) window.clearTimeout(retryTimer.current); };
+    const onSaved = (e: MessageEvent<{ version?: number }>) => { if (e.data?.version !== version.current) void tick(true); };
+    document.addEventListener('visibilitychange', onVisible);
+    channel?.addEventListener('message', onSaved);
+    return () => { window.clearInterval(id); document.removeEventListener('visibilitychange', onVisible); channel?.removeEventListener('message', onSaved); if (retryTimer.current) window.clearTimeout(retryTimer.current); };
   }, [mode]);
 
   // Once per Clerk session: stamp the sign-in, and on a first sign-in create the SignMeUp user (plus a student record).
