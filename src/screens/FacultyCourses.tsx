@@ -1,14 +1,19 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { useStore } from '../data/store';
 import { Shell, PageHeader, useToast } from '../components/Shell';
-import { Empty } from '../components/ui';
-import { Print, Search } from '../components/icons';
+import { Banner, Empty } from '../components/ui';
+import { Print, Search, X } from '../components/icons';
+import { useEscapeToCancel, useWarnBeforeLeaving } from '../components/draft';
+import type { Course, Db } from '../data/types';
+import { canMaintainCatalog, type CourseField, type CourseIssue } from '../lib/catalog';
 import { wildcardMatch } from '../lib/wildcard';
 
 type Mode = 'facultyName' | 'facultyId' | 'courseId' | 'courseTitle';
 
 export default function FacultyCourses() {
-  const { db } = useStore();
+  const { db, user, saveCourse } = useStore();
+  const canMaintain = canMaintainCatalog(user); // FCI-03
+  const [editing, setEditing] = useState<{ course: Course; originalId: string | null } | null>(null);
   const toast = useToast();
   const [mode, setMode] = useState<Mode>('facultyName');
   const [q, setQ] = useState('');
@@ -24,8 +29,15 @@ export default function FacultyCourses() {
   const deptName = (id: string) => db.departments.find((d) => d.id === id)?.name ?? id;
 
   return (
-    <Shell helpKey="fci" screen="FCI · Faculty & course information">
+    <Shell helpKey="fci" screen="FCI · Faculty & course information" panel={editing ? (
+      <CoursePanel key={editing.originalId ?? 'new'} db={db} initial={editing.course} originalId={editing.originalId} onClose={() => setEditing(null)} onSave={(c) => {
+        const r = saveCourse(c, editing.originalId);
+        if (r.ok) { setEditing(null); setMode('courseId'); setQ(''); setSel(c.id.trim().toUpperCase().replace(/\s+/g, ' ')); toast(`${editing.originalId ? 'Course updated' : 'Course added'} · recorded under ${user!.name}`); }
+        return r;
+      }} />
+    ) : undefined}>
       <PageHeader title="Faculty and courses" meta={<span>Query by faculty ID, faculty name, course ID or course title · use * as a wildcard</span>}>
+        {canMaintain && <button className="btn no-print" onClick={() => setEditing({ course: { id: '', title: '', description: '', units: 3, prereqs: [], deptId: dept || db.departments[0]?.id || '', level: 'lower', qualifiedFaculty: [] }, originalId: null })}>Add course</button>}
         <button className="btn secondary" onClick={() => toast('Department report: preview opens in the print dialog')}>Department report</button>
       </PageHeader>
 
@@ -87,7 +99,7 @@ export default function FacultyCourses() {
         {course && (
           <div className="stack" style={{ gap: 16 }}>
             <div className="card">
-              <div className="card-head"><div><h2>{course.id} · {course.title}</h2><div className="sub">{course.units} units · {deptName(course.deptId)} · {course.level === 'upper' ? 'Upper division' : course.level === 'graduate' ? 'Graduate' : 'Lower division'}</div></div><div className="actions"><button className="btn secondary sm" onClick={() => window.print()}><Print />Print</button></div></div>
+              <div className="card-head"><div><h2>{course.id} · {course.title}</h2><div className="sub">{course.units} units · {deptName(course.deptId)} · {course.level === 'upper' ? 'Upper division' : course.level === 'graduate' ? 'Graduate' : 'Lower division'}</div></div><div className="actions">{canMaintain && <button className="btn secondary sm no-print" onClick={() => setEditing({ course, originalId: course.id })}>Edit course</button>}<button className="btn secondary sm" onClick={() => window.print()}><Print />Print</button></div></div>
               <div className="card-body">
                 <p style={{ fontSize: 13, lineHeight: 1.55 }}>{course.description}</p>
                 <div className="kv"><span className="k">Prerequisites</span><span>{course.prereqs.join(', ') || 'None'}</span></div>
@@ -104,5 +116,62 @@ export default function FacultyCourses() {
         )}
       </div>
     </Shell>
+  );
+}
+
+const LEVELS: [Course['level'], string][] = [['lower', 'Lower division'], ['upper', 'Upper division'], ['graduate', 'Graduate']];
+
+/** Add or edit a catalog course (FCI-03). Entries stay in this panel until saved; Cancel and restore or Esc discards them (GEN-33, GEN-34). */
+function CoursePanel({ db, initial, originalId, onClose, onSave }: {
+  db: Db; initial: Course; originalId: string | null; onClose(): void; onSave(c: Course): { ok: true } | ({ ok: false } & CourseIssue);
+}) {
+  const [draft, setDraft] = useState<Course>(initial);
+  const [prereqText, setPrereqText] = useState(initial.prereqs.join(', '));
+  const [err, setErr] = useState<CourseIssue | null>(null);
+  const dirty = JSON.stringify({ ...draft, prereqs: prereqText }) !== JSON.stringify({ ...initial, prereqs: initial.prereqs.join(', ') });
+  useEscapeToCancel(true, onClose);
+  useWarnBeforeLeaving(dirty);
+  const set = <K extends keyof Course>(k: K, v: Course[K]) => { setDraft({ ...draft, [k]: v }); if (err?.field === k) setErr(null); };
+  const cls = (f: CourseField) => `input${err?.field === f ? ' error' : ''}`;
+  const toggleFaculty = (id: string) => set('qualifiedFaculty', draft.qualifiedFaculty.includes(id) ? draft.qualifiedFaculty.filter((x) => x !== id) : [...draft.qualifiedFaculty, id]);
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    const r = onSave({ ...draft, prereqs: prereqText.split(',') });
+    if (!r.ok) setErr(r);
+  }
+  return (
+    <aside className="panel" aria-label={originalId ? 'Edit course' : 'Add course'}>
+      <div className="panel-head"><h2>{originalId ? `Edit ${originalId}` : 'Add course'}</h2><button className="btn ghost sm icon" onClick={onClose} aria-label="Close"><X /></button></div>
+      <form className="panel-body" onSubmit={submit} noValidate id="editcourse">
+        <div className="field"><label className="label" htmlFor="c-id">Course ID <span className="req">*</span></label>
+          <input id="c-id" className={cls('id')} value={draft.id} disabled={originalId !== null} placeholder="e.g. CS 310" onChange={(e) => set('id', e.target.value)} /></div>
+        <div className="field"><label className="label" htmlFor="c-title">Title <span className="req">*</span></label>
+          <input id="c-title" className={cls('title')} value={draft.title} onChange={(e) => set('title', e.target.value)} /></div>
+        <div className="field"><label className="label" htmlFor="c-desc">Description <span className="req">*</span></label>
+          <textarea id="c-desc" className={cls('description')} rows={3} value={draft.description} onChange={(e) => set('description', e.target.value)} /></div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="field"><label className="label" htmlFor="c-units">Units <span className="req">*</span></label>
+            <input id="c-units" type="number" min={0} max={12} step={1} className={cls('units')} value={Number.isNaN(draft.units) ? '' : draft.units} onChange={(e) => set('units', e.target.value === '' ? NaN : Number(e.target.value))} /></div>
+          <div className="field"><label className="label" htmlFor="c-level">Level <span className="req">*</span></label>
+            <select id="c-level" className={cls('level')} value={draft.level} onChange={(e) => set('level', e.target.value as Course['level'])}>{LEVELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
+        </div>
+        <div className="field"><label className="label" htmlFor="c-dept">Department <span className="req">*</span></label>
+          <select id="c-dept" className={cls('deptId')} value={draft.deptId} onChange={(e) => set('deptId', e.target.value)}>{db.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+        <div className="field"><label className="label" htmlFor="c-pre">Prerequisites</label>
+          <input id="c-pre" className={cls('prereqs')} value={prereqText} placeholder="Course IDs separated by commas, e.g. CS 201, CS 250" list="catalog-ids" onChange={(e) => { setPrereqText(e.target.value); if (err?.field === 'prereqs') setErr(null); }} />
+          <datalist id="catalog-ids">{db.courses.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}</datalist></div>
+        <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend className="label">Faculty qualified to teach</legend>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto' }}>
+            {db.faculty.map((f) => <label key={f.id} className="check"><input type="checkbox" checked={draft.qualifiedFaculty.includes(f.id)} onChange={() => toggleFaculty(f.id)} />{f.name} · {f.id}</label>)}
+          </div>
+        </fieldset>
+        {err && <Banner kind="error"><strong>{err.reason}</strong> {err.requirement}</Banner>}
+      </form>
+      <div className="panel-foot">
+        <button className="btn lg" type="submit" form="editcourse">{originalId ? 'Save changes' : 'Add course'}</button>
+        <button className="btn ghost" onClick={onClose}>Cancel and restore</button>
+      </div>
+    </aside>
   );
 }

@@ -5,6 +5,7 @@ import type { Db, NoteCategory, Student } from '../data/types';
 import { Shell, PageHeader, Dot, useToast } from '../components/Shell';
 import { Banner, Chip, Empty, Tile } from '../components/ui';
 import { Search, X } from '../components/icons';
+import { classLevel, graduateStatus } from '../lib/classLevel';
 import { courseOf, currentRegistrations, gpa, offeringOf, unitsRegistered } from '../lib/rules';
 import { formatDate, formatDateTime, formatTimeRange, shortName } from '../lib/format';
 import { wildcardMatch } from '../lib/wildcard';
@@ -64,7 +65,7 @@ export default function StudentRecord() {
     <Shell helpKey="record" screen="ER · Electronic student record" panel={panel}>
       <PageHeader
         title={fullName(student)}
-        meta={<><span>ID {student.id}</span><Dot /><span>{major?.title}{minor ? ` · Minor: ${minor.title.replace(' minor', '')}` : ''}</span><Dot /><span>Born {formatDate(student.dateOfBirth)}</span><Dot /><span>{student.phone}</span><Dot /><span>{student.address}</span></>}
+        meta={<><span>ID {student.id}</span><Dot /><span title={graduateStatus(student)}>{classLevel(student)}</span><Dot /><span>{major?.title}{minor ? ` · Minor: ${minor.title.replace(' minor', '')}` : ''}</span><Dot /><span>Born {formatDate(student.dateOfBirth)}</span><Dot /><span>{student.phone}</span><Dot /><span>{student.address}</span></>}
       >
         {!isStudent && (
           <div className="input-wrap no-print" style={{ width: 240 }}><Search /><input className="input" placeholder="Find student (Okafor-*)" value={query} onChange={(e) => setQuery(e.target.value)} list="students" onBlur={() => { const m = db.students.find((s) => s.id === query.trim() || `${s.firstName} ${s.lastName}` === query.trim()); if (m) setPickedId(m.id); }} />

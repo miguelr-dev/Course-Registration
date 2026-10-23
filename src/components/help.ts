@@ -25,8 +25,8 @@ export const HELP: Record<string, HelpTopic> = {
     fields: [['Status', 'Mandatory per entry: approved, dropped or waived.'], ['Reason', 'Optional. Recorded in the change history.'], ['Add course', 'Adds a course from the major as Approved.']],
   },
   fci: {
-    title: 'Faculty & course information', summary: 'Query by faculty ID, faculty name, course ID or course title. Faculty results show the courses that person is authorized to teach; course results show the faculty authorized to teach it. Wildcards * and ? are accepted.',
-    fields: [['Search by', 'Mandatory. Chooses which field the query matches.'], ['Query', 'Optional. Blank lists everything in the chosen department.']],
+    title: 'Faculty & course information', summary: 'Query by faculty ID, faculty name, course ID or course title. Faculty results show the courses that person is authorized to teach; course results show the faculty authorized to teach it. Wildcards * and ? are accepted. The registrar can add a course or edit an existing one (title, description, units, level, department, prerequisites and the faculty qualified to teach it); the course ID cannot be changed once it is in the catalog.',
+    fields: [['Search by', 'Mandatory. Chooses which field the query matches.'], ['Query', 'Optional. Blank lists everything in the chosen department.'], ['Course ID', 'Mandatory when adding. Department code, a space and a 3-digit number, e.g. CS 310.'], ['Prerequisites', 'Optional. Existing course IDs separated by commas; a course cannot require itself or create a loop.'], ['Faculty qualified to teach', 'Optional. Tick each faculty member authorized to teach the course.']],
   },
   grades: {
     title: 'Course grades', summary: 'Grade entry for a course you are the primary instructor of. Grades may only be entered during the end-of-term window unless you hold special update privileges. If anyone other than the instructor changes a grade, the system records who did it and when.',

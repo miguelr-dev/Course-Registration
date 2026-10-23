@@ -3,7 +3,8 @@ import { useAuth, useClerk, useSession, useUser } from '@clerk/react';
 import { createSeed } from './seed';
 import { canSwitchRoles, effectiveUser, type ViewAs } from '../lib/viewAs';
 import { SyncClient } from './sync';
-import type { Db, NoteCategory, OutlineStatus, RegistrationType, Student, Subsystem, User } from './types';
+import type { Course, Db, NoteCategory, OutlineStatus, RegistrationType, Student, Subsystem, User } from './types';
+import { applyCourseSave, type CourseIssue } from '../lib/catalog';
 import { nowIso } from '../lib/format';
 import { registrationIssues, type EligibilityIssue } from '../lib/rules';
 import { adminEmails, isAllowedEmail, provisionUser } from '../lib/auth';
@@ -63,6 +64,7 @@ interface StoreApi {
   requestWaiver(studentId: string, courseId: string, note: string): void;
   appendNote(studentId: string, category: NoteCategory, text: string): void;
   updateStudent(studentId: string, info: StudentInfo): { ok: true } | { ok: false; field: keyof StudentInfo; reason: string; requirement: string };
+  saveCourse(course: Course, originalId: string | null): { ok: true } | ({ ok: false } & CourseIssue);
   setOutlineStatus(studentId: string, courseId: string, status: OutlineStatus, note?: string): void;
   addOutlineCourse(studentId: string, courseId: string): void;
   setGrade(scheduleNo: string, studentId: string, grade: string, note?: string): void;
@@ -327,6 +329,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ...d,
         students: d.students.map((s) => (s.id === studentId ? { ...s, ...next } : s)),
       }, 'ER', `Updated ${changed.map((f) => LABELS[f].toLowerCase()).join(', ')} for student ${studentId}`));
+      return { ok: true };
+    },
+
+    saveCourse(course, originalId) {
+      // FCI-03: the registrar (or an administrator) adds and maintains catalog courses; the server enforces the same rule (GEN-05).
+      const r = applyCourseSave(db, user, course, originalId);
+      if (!r.ok) return r;
+      if (r.log) { const log = r.log; commit((d) => { const again = applyCourseSave(d, user, course, originalId); return again.ok && again.log ? stamp(again.db, 'FCI', log) : d; }); }
       return { ok: true };
     },
 
