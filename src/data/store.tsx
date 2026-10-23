@@ -5,6 +5,7 @@ import { canSwitchRoles, effectiveUser, type ViewAs } from '../lib/viewAs';
 import { SyncClient } from './sync';
 import type { Course, Db, NoteCategory, OutlineStatus, RegistrationType, Student, Subsystem, User } from './types';
 import { applyCourseSave, type CourseIssue } from '../lib/catalog';
+import { applyFacultySave, type FacultyEntry, type FacultyIssue } from '../lib/faculty';
 import { nowIso } from '../lib/format';
 import { registrationIssues, type EligibilityIssue } from '../lib/rules';
 import { adminEmails, isAllowedEmail, provisionUser } from '../lib/auth';
@@ -65,6 +66,7 @@ interface StoreApi {
   appendNote(studentId: string, category: NoteCategory, text: string): void;
   updateStudent(studentId: string, info: StudentInfo): { ok: true } | { ok: false; field: keyof StudentInfo; reason: string; requirement: string };
   saveCourse(course: Course, originalId: string | null): { ok: true } | ({ ok: false } & CourseIssue);
+  saveFaculty(entry: FacultyEntry, originalId: string | null): { ok: true } | ({ ok: false } & FacultyIssue);
   setOutlineStatus(studentId: string, courseId: string, status: OutlineStatus, note?: string): void;
   addOutlineCourse(studentId: string, courseId: string): void;
   setGrade(scheduleNo: string, studentId: string, grade: string, note?: string): void;
@@ -337,6 +339,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const r = applyCourseSave(db, user, course, originalId);
       if (!r.ok) return r;
       if (r.log) { const log = r.log; commit((d) => { const again = applyCourseSave(d, user, course, originalId); return again.ok && again.log ? stamp(again.db, 'FCI', log) : d; }); }
+      return { ok: true };
+    },
+
+    saveFaculty(entry, originalId) {
+      // FCI-01, FCI-02: the registrar (or an administrator) maintains the faculty directory; the server enforces the same rule (GEN-05).
+      const r = applyFacultySave(db, user, entry, originalId);
+      if (!r.ok) return r;
+      if (r.log) { const log = r.log; commit((d) => { const again = applyFacultySave(d, user, entry, originalId); return again.ok && again.log ? stamp(again.db, 'FCI', log) : d; }); }
       return { ok: true };
     },
 
