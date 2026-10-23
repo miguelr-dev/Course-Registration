@@ -28,6 +28,15 @@ describe('ER-09 class level and graduate status', () => {
     expect(graduateStatus({ graduate: true })).toBe('Accepted into the graduate program');
     expect(graduateStatus({ graduate: false })).toBe('Not in the graduate program');
   });
+  it('counts D and CR as earned, but not D-, F, NC, I or an empty grade', () => {
+    expect(unitsEarned(student([course(3, 'D'), course(3, 'CR')]))).toBe(6);
+    for (const g of ['D-', 'F', 'NC', 'I', '']) expect(unitsEarned(student([course(3, g)]))).toBe(0);
+  });
+  it('is exact at every boundary', () => {
+    for (const [units, level] of [[0, 'Freshman'], [29, 'Freshman'], [30, 'Sophomore'], [59, 'Sophomore'], [60, 'Junior'], [89, 'Junior'], [90, 'Senior'], [200, 'Senior']] as const) {
+      expect(classLevel(student([course(units)]))).toBe(level);
+    }
+  });
   it('gives every seeded student a level', () => {
     for (const s of createSeed().students) expect(['Freshman', 'Sophomore', 'Junior', 'Senior', 'Graduate']).toContain(classLevel(s));
   });

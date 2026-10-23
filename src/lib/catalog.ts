@@ -1,4 +1,4 @@
-import type { Course, Db } from '../data/types';
+import type { Course, Db, User } from '../data/types';
 
 /**
  * FCI-03: FCI maintains each course's ID, title, description, prerequisites, units, and the
@@ -55,7 +55,42 @@ export function courseIssue(db: Db, draft: Course, originalId: string | null): C
   for (const f of c.qualifiedFaculty) {
     if (!db.faculty.some((x) => x.id === f)) return { field: 'qualifiedFaculty', reason: `Faculty ${f} is not in the faculty directory.`, requirement: 'Choose qualified faculty from the list.' };
   }
+  // Keep the schedule consistent: someone teaching a section this term must stay qualified for it.
+  const before = originalId ? db.courses.find((x) => x.id === originalId) : undefined;
+  for (const f of before?.qualifiedFaculty ?? []) {
+    if (c.qualifiedFaculty.includes(f)) continue;
+    const section = db.offerings.find((o) => o.courseId === c.id && o.instructorId === f && o.term === db.term);
+    if (section) {
+      const name = db.faculty.find((x) => x.id === f)?.name ?? f;
+      return { field: 'qualifiedFaculty', reason: `${name} is teaching ${c.id} (section ${section.scheduleNo}) in ${db.term}.`, requirement: 'Keep them qualified, or reassign that section first.' };
+    }
+  }
   return null;
+}
+
+/** Only the registrar or an administrator, with access to the FCI area, may change the catalog (FCI-03, GEN-07). */
+export function canMaintainCatalog(user: Pick<User, 'role' | 'access'> | null | undefined): boolean {
+  if (!user) return false;
+  return user.role === 'admin' || (user.role === 'registrar' && user.access.includes('FCI'));
+}
+
+export type CourseSave = { ok: true; db: Db; log: string | null } | ({ ok: false } & CourseIssue);
+
+/**
+ * Applies an add or edit to the catalog without side effects: returns the new document and the
+ * transaction text to record (null when nothing changed), or the first problem.
+ */
+export function applyCourseSave(db: Db, user: Pick<User, 'role' | 'access'> | null | undefined, course: Course, originalId: string | null): CourseSave {
+  if (!canMaintainCatalog(user)) return { ok: false, field: 'id', reason: 'Changing the course catalog requires the registrar or a system administrator.', requirement: 'Ask the registrar to make this change.' };
+  const issue = courseIssue(db, course, originalId);
+  if (issue) return { ok: false, ...issue };
+  const next = normalizeCourse(course);
+  const prev = originalId ? db.courses.find((c) => c.id === originalId) : undefined;
+  if (originalId && !prev) return { ok: false, field: 'id', reason: `${originalId} is no longer in the catalog.`, requirement: 'Close this panel and search for the course again.' };
+  if (!prev) return { ok: true, db: { ...db, courses: [...db.courses, next] }, log: `Added course ${next.id} ${next.title}` };
+  const changed = changedCourseFields(prev, next);
+  if (!changed.length) return { ok: true, db, log: null };
+  return { ok: true, db: { ...db, courses: db.courses.map((c) => (c.id === next.id ? next : c)) }, log: `Updated ${changed.join(', ')} for course ${next.id}` };
 }
 
 /** Field names that differ between two versions of a course, for the transaction log. */

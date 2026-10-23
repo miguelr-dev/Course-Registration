@@ -5,14 +5,14 @@ import { Banner, Empty } from '../components/ui';
 import { Print, Search, X } from '../components/icons';
 import { useEscapeToCancel, useWarnBeforeLeaving } from '../components/draft';
 import type { Course, Db } from '../data/types';
-import type { CourseField, CourseIssue } from '../lib/catalog';
+import { canMaintainCatalog, type CourseField, type CourseIssue } from '../lib/catalog';
 import { wildcardMatch } from '../lib/wildcard';
 
 type Mode = 'facultyName' | 'facultyId' | 'courseId' | 'courseTitle';
 
 export default function FacultyCourses() {
   const { db, user, saveCourse } = useStore();
-  const canMaintain = user?.role === 'registrar' || user?.role === 'admin'; // FCI-03
+  const canMaintain = canMaintainCatalog(user); // FCI-03
   const [editing, setEditing] = useState<{ course: Course; originalId: string | null } | null>(null);
   const toast = useToast();
   const [mode, setMode] = useState<Mode>('facultyName');
