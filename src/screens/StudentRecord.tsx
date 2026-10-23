@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { useStore } from '../data/store';
-import type { Db, NoteCategory, Student } from '../data/types';
+import type { CompletedCourse, Db, NoteCategory, Student, TransferCourse } from '../data/types';
 import { Shell, PageHeader, Dot, useToast } from '../components/Shell';
 import { Banner, Chip, Empty, Tile } from '../components/ui';
 import { Search, X } from '../components/icons';
@@ -10,14 +10,16 @@ import { courseOf, currentRegistrations, gpa, offeringOf, unitsRegistered } from
 import { formatDate, formatDateTime, formatTimeRange, shortName } from '../lib/format';
 import { wildcardMatch } from '../lib/wildcard';
 import { fullName } from '../lib/names';
-import { isMinor, LABELS, missingKeyInfo, SELF_EDITABLE, type StudentInfo } from '../lib/student';
+import { isMinor, LABELS, missingKeyInfo, selfEditableFields, type StudentInfo } from '../lib/student';
+import { COMPLETION_GRADES, historyKey, type HistoryField, type HistoryIssue, type HistoryKind } from '../lib/courseHistory';
+import { useEscapeToCancel } from '../components/draft';
 
 const CATEGORY: Record<NoteCategory, { label: string; kind: 'ok' | 'warn' | 'drop' | 'indigo' }> = {
   advising: { label: 'Advising', kind: 'indigo' }, commendation: { label: 'Commendation', kind: 'ok' }, issue: { label: 'Issue', kind: 'drop' }, 'special-need': { label: 'Special need', kind: 'warn' },
 };
 
 export default function StudentRecord() {
-  const { db, user, appendNote, updateStudent } = useStore();
+  const { db, user, appendNote, updateStudent, saveCourseHistory } = useStore();
   const toast = useToast();
   const params = useParams();
   const isStudent = user?.role === 'student';
@@ -32,6 +34,7 @@ export default function StudentRecord() {
   const [text, setText] = useState('');
   const [noteErr, setNoteErr] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [history, setHistory] = useState<{ kind: HistoryKind; entry: CompletedCourse | TransferCourse; originalKey: string | null } | null>(null);
 
   const matches = useMemo(() => db.students.filter((s) => wildcardMatch(query, fullName(s)) || wildcardMatch(query, `${s.firstName} ${s.lastName}`) || wildcardMatch(query, s.lastName) || wildcardMatch(query, s.id)), [db.students, query]);
 
@@ -44,14 +47,23 @@ export default function StudentRecord() {
   const unitsTransfer = student.transfer.reduce((s, c) => s + c.units, 0);
   const g = gpa(student);
   const missing = missingKeyInfo(student);
-  const editable: (keyof StudentInfo)[] | null = isStudent ? SELF_EDITABLE : null; // null: every field
+  const editable: (keyof StudentInfo)[] | null = isStudent ? selfEditableFields(student) : null; // null: every field
   const panel = editing
     ? <EditPanel key={student.id} db={db} student={student} only={editable} onClose={() => setEditing(false)} onSave={(info) => {
         const r = updateStudent(student.id, info);
         if (r.ok) { setEditing(false); toast(`Student information saved · recorded under ${user!.name}`); }
         return r;
       }} />
-    : undefined;
+    : history
+      ? <HistoryPanel key={`${student.id}-${history.kind}-${history.originalKey ?? 'new'}`} db={db} kind={history.kind} initial={history.entry} isNew={history.originalKey === null} onClose={() => setHistory(null)} onSave={(entry) => {
+          const r = saveCourseHistory(student.id, history.kind, entry, history.originalKey);
+          if (r.ok) { setTab(history.kind); toast(`${history.originalKey ? 'Course corrected' : 'Course added'} · recorded under ${user!.name}`); setHistory(null); }
+          return r;
+        }} />
+      : undefined;
+  const blankHere: CompletedCourse = { courseId: '', title: '', term: '', units: 0, grade: '' };
+  const blankTransfer: TransferCourse = { ...blankHere, university: '', location: '', equivalentCourseId: '' };
+  const openHistory = (kind: HistoryKind, entry: CompletedCourse | TransferCourse, originalKey: string | null) => { setEditing(false); setHistory({ kind, entry, originalKey }); };
 
   function submitNote(e: FormEvent) {
     e.preventDefault();
@@ -72,12 +84,12 @@ export default function StudentRecord() {
             <datalist id="students">{matches.map((s) => <option key={s.id} value={`${s.firstName} ${s.lastName}`}>{s.id}</option>)}</datalist>
           </div>
         )}
-        <button className="btn secondary no-print" onClick={() => setEditing(true)}>{isStudent ? 'Update contact info' : 'Edit student information'}</button>
+        <button className="btn secondary no-print" onClick={() => { setHistory(null); setEditing(true); }}>{isStudent ? 'Update contact info' : 'Edit student information'}</button>
         <button className="btn" onClick={() => window.print()}>Print record</button>
       </PageHeader>
 
       {missing.length > 0 && (
-        <Banner kind="warn"><strong>Key student information is incomplete: {missing.map((f) => LABELS[f].toLowerCase()).join(', ')}.</strong> {isStudent && missing.some((f) => !SELF_EDITABLE.includes(f)) ? 'Ask the registrar to complete the rest of your record.' : 'Choose Edit student information to complete it; you can return to this screen at any time to add or change it.'}</Banner>
+        <Banner kind="warn"><strong>Key student information is incomplete: {missing.map((f) => LABELS[f].toLowerCase()).join(', ')}.</strong> Registration, major outline changes and course history entry are blocked until it is complete. Choose {isStudent ? 'Update contact info' : 'Edit student information'} to complete it.</Banner>
       )}
 
       <div className="grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 16 }}>
@@ -95,14 +107,21 @@ export default function StudentRecord() {
             <button className={`tab${tab === 'current' ? ' active' : ''}`} onClick={() => setTab('current')}>Current ({regs.length})</button>
           </div>
           <div className="rows">
+            {!isStudent && tab !== 'current' && (
+              <div className="cluster no-print" style={{ padding: '10px 20px', borderBottom: '1px solid var(--row-border)' }}>
+                <span className="sub grow">{tab === 'here' ? 'Courses completed at this university' : 'Courses completed at another accredited university'}</span>
+                <button className="btn secondary sm" onClick={() => openHistory(tab, tab === 'here' ? blankHere : blankTransfer, null)}>{tab === 'here' ? 'Add completed course' : 'Add transfer course'}</button>
+              </div>
+            )}
             {tab === 'here' && <>
-              <div className="row head" style={{ gridTemplateColumns: '84px 1fr 100px 48px 56px' }}><span>Course</span><span>Title</span><span>Semester</span><span style={{ textAlign: 'right' }}>Units</span><span style={{ textAlign: 'right' }}>Grade</span></div>
-              {student.completed.map((c) => <div key={c.courseId + c.term} className="row" style={{ gridTemplateColumns: '84px 1fr 100px 48px 56px' }}><span className="cid">{c.courseId}</span><span className="title">{c.title}</span><span className="sub">{c.term}</span><span className="num">{c.units}</span><span style={{ textAlign: 'right', fontWeight: 600 }}>{c.grade}</span></div>)}
+              <div className="row head" style={{ gridTemplateColumns: `84px 1fr 100px 48px 56px${isStudent ? '' : ' 72px'}` }}><span>Course</span><span>Title</span><span>Semester</span><span style={{ textAlign: 'right' }}>Units</span><span style={{ textAlign: 'right' }}>Grade</span>{!isStudent && <span />}</div>
+              {student.completed.length === 0 && <Empty>No completed courses on file.</Empty>}
+              {student.completed.map((c) => <div key={c.courseId + c.term} className="row" style={{ gridTemplateColumns: `84px 1fr 100px 48px 56px${isStudent ? '' : ' 72px'}` }}><span className="cid">{c.courseId}</span><span className="title">{c.title}</span><span className="sub">{c.term}</span><span className="num">{c.units}</span><span style={{ textAlign: 'right', fontWeight: 600 }}>{c.grade}</span>{!isStudent && <span style={{ textAlign: 'right' }}><button className="btn ghost sm no-print" onClick={() => openHistory('here', c, historyKey('here', c))}>Correct</button></span>}</div>)}
             </>}
             {tab === 'transfer' && <>
-              <div className="row head" style={{ gridTemplateColumns: '84px 1fr 1fr 100px 48px 56px' }}><span>Course</span><span>Title · equivalent here</span><span>University</span><span>Semester</span><span style={{ textAlign: 'right' }}>Units</span><span style={{ textAlign: 'right' }}>Grade</span></div>
+              <div className="row head" style={{ gridTemplateColumns: `84px 1fr 1fr 100px 48px 56px${isStudent ? '' : ' 72px'}` }}><span>Course</span><span>Title · equivalent here</span><span>University</span><span>Semester</span><span style={{ textAlign: 'right' }}>Units</span><span style={{ textAlign: 'right' }}>Grade</span>{!isStudent && <span />}</div>
               {student.transfer.length === 0 && <Empty>No transfer courses on file.</Empty>}
-              {student.transfer.map((c) => <div key={c.courseId} className="row" style={{ gridTemplateColumns: '84px 1fr 1fr 100px 48px 56px' }}><span className="cid">{c.courseId}</span><div><div className="title">{c.title}</div><div className="detail">Equivalent to {c.equivalentCourseId}</div></div><div><div>{c.university}</div><div className="detail">{c.location}</div></div><span className="sub">{c.term}</span><span className="num">{c.units}</span><span style={{ textAlign: 'right', fontWeight: 600 }}>{c.grade}</span></div>)}
+              {student.transfer.map((c) => <div key={historyKey('transfer', c)} className="row" style={{ gridTemplateColumns: `84px 1fr 1fr 100px 48px 56px${isStudent ? '' : ' 72px'}` }}><span className="cid">{c.courseId}</span><div><div className="title">{c.title}</div><div className="detail">{c.equivalentCourseId ? `Equivalent to ${c.equivalentCourseId}` : 'No equivalent course'}</div></div><div><div>{c.university}</div><div className="detail">{c.location}</div></div><span className="sub">{c.term}</span><span className="num">{c.units}</span><span style={{ textAlign: 'right', fontWeight: 600 }}>{c.grade}</span>{!isStudent && <span style={{ textAlign: 'right' }}><button className="btn ghost sm no-print" onClick={() => openHistory('transfer', c, historyKey('transfer', c))}>Correct</button></span>}</div>)}
             </>}
             {tab === 'current' && <>
               <div className="row head" style={{ gridTemplateColumns: '84px 1fr 150px 48px' }}><span>Course</span><span>Title · instructor</span><span>Days / time</span><span style={{ textAlign: 'right' }}>Units</span></div>
@@ -199,11 +218,64 @@ function EditPanel({ db, student, only, onClose, onSave }: {
             {db.majors.filter((m) => isMinor(m.id)).map((m) => <option key={m.id} value={m.id}>{m.title}</option>)}
           </select></div>
         <label className="check"><input type="checkbox" checked={draft.graduate} disabled={!can('graduate')} onChange={(e) => set('graduate', e.target.checked)} />Accepted into the graduate program</label>
-        {only && <span className="help">Students can update their telephone and address. The registrar changes the rest of the record.</span>}
+        {only && <span className="help">You can update your telephone and address, and fill in key information that is still missing. The registrar changes the rest of the record.</span>}
         {err && <Banner kind="error"><strong>{err.reason}</strong> {err.requirement}</Banner>}
       </form>
       <div className="panel-foot">
         <button className="btn lg" type="submit" form="editstudent">Save changes</button>
+        <button className="btn ghost" onClick={onClose}>Cancel and restore</button>
+      </div>
+    </aside>
+  );
+}
+
+/** Add or correct a course completed here or at another university (ER-01, ER-04). Cancel and restore or Esc discards the draft (GEN-33, GEN-34). */
+function HistoryPanel({ db, kind, initial, isNew, onClose, onSave }: {
+  db: Db; kind: HistoryKind; initial: CompletedCourse | TransferCourse; isNew: boolean; onClose(): void;
+  onSave(entry: CompletedCourse | TransferCourse): { ok: true } | ({ ok: false } & HistoryIssue);
+}) {
+  const [draft, setDraft] = useState<TransferCourse>({ university: '', location: '', equivalentCourseId: '', ...initial } as TransferCourse);
+  const [err, setErr] = useState<HistoryIssue | null>(null);
+  useEscapeToCancel(true, onClose);
+  const set = <K extends keyof TransferCourse>(k: K, v: TransferCourse[K]) => { setDraft({ ...draft, [k]: v }); if (err?.field === k) setErr(null); };
+  const cls = (f: HistoryField) => `input${err?.field === f ? ' error' : ''}`;
+  const transfer = kind === 'transfer';
+  function pickCatalog(id: string) {
+    const c = db.courses.find((x) => x.id === id.trim().toUpperCase());
+    setDraft({ ...draft, courseId: id, ...(c && !transfer ? { title: c.title, units: c.units } : {}) });
+    if (err?.field === 'courseId') setErr(null);
+  }
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    const here: CompletedCourse = { courseId: draft.courseId, title: draft.title, term: draft.term, units: draft.units, grade: draft.grade };
+    const r = onSave(transfer ? draft : here);
+    if (!r.ok) setErr(r);
+  }
+  return (
+    <aside className="panel" aria-label={transfer ? 'Transfer course' : 'Completed course'}>
+      <div className="panel-head"><h2>{isNew ? (transfer ? 'Add transfer course' : 'Add completed course') : `Correct ${initial.courseId}`}</h2><button className="btn ghost sm icon" onClick={onClose} aria-label="Close"><X /></button></div>
+      <form className="panel-body" onSubmit={submit} noValidate id="historyform">
+        {transfer && <>
+          <div className="field"><label className="label" htmlFor="h-uni">University <span className="req">*</span></label><input id="h-uni" className={cls('university')} value={draft.university} placeholder="e.g. Santa Monica College" onChange={(e) => set('university', e.target.value)} /></div>
+          <div className="field"><label className="label" htmlFor="h-loc">Location <span className="req">*</span></label><input id="h-loc" className={cls('location')} value={draft.location} placeholder="e.g. Santa Monica, CA" onChange={(e) => set('location', e.target.value)} /></div>
+        </>}
+        <div className="field"><label className="label" htmlFor="h-id">{transfer ? 'Course ID at that university' : 'Course ID'} <span className="req">*</span></label>
+          <input id="h-id" className={cls('courseId')} value={draft.courseId} list={transfer ? undefined : 'history-catalog'} placeholder={transfer ? 'e.g. MATH 21' : 'e.g. CS 101'} onChange={(e) => pickCatalog(e.target.value)} />
+          {!transfer && <datalist id="history-catalog">{db.courses.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}</datalist>}</div>
+        <div className="field"><label className="label" htmlFor="h-title">Course title <span className="req">*</span></label><input id="h-title" className={cls('title')} value={draft.title} onChange={(e) => set('title', e.target.value)} /></div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: 12 }}>
+          <div className="field"><label className="label" htmlFor="h-term">Semester <span className="req">*</span></label><input id="h-term" className={cls('term')} value={draft.term} placeholder="Fall 2025" onChange={(e) => set('term', e.target.value)} /></div>
+          <div className="field"><label className="label" htmlFor="h-units">Units <span className="req">*</span></label><input id="h-units" type="number" min={0} max={12} step={1} className={cls('units')} value={Number.isNaN(draft.units) ? '' : draft.units} onChange={(e) => set('units', e.target.value === '' ? NaN : Number(e.target.value))} /></div>
+          <div className="field"><label className="label" htmlFor="h-grade">Grade <span className="req">*</span></label>
+            <select id="h-grade" className={cls('grade')} value={draft.grade} onChange={(e) => set('grade', e.target.value)}><option value="">—</option>{COMPLETION_GRADES.map((g) => <option key={g} value={g}>{g}</option>)}</select></div>
+        </div>
+        {transfer && <div className="field"><label className="label" htmlFor="h-eq">Equivalent course here</label>
+          <select id="h-eq" className={cls('equivalentCourseId')} value={draft.equivalentCourseId} onChange={(e) => set('equivalentCourseId', e.target.value)}><option value="">None</option>{db.courses.map((c) => <option key={c.id} value={c.id}>{c.id} · {c.title}</option>)}</select></div>}
+        {!isNew && <span className="help">Corrections replace the entry and are recorded in the transaction log under your name.</span>}
+        {err && <Banner kind="error"><strong>{err.reason}</strong> {err.requirement}</Banner>}
+      </form>
+      <div className="panel-foot">
+        <button className="btn lg" type="submit" form="historyform">{isNew ? 'Add course' : 'Save correction'}</button>
         <button className="btn ghost" onClick={onClose}>Cancel and restore</button>
       </div>
     </aside>

@@ -20,6 +20,7 @@ const CATALOG = new Set(['departments', 'terms', 'faculty', 'faculty_teaches_in'
 const CHECKED_ELSEWHERE = new Set(['app_users', 'user_access']);
 const GRADE_COLS = ['grade', 'grade_note', 'grade_updated_by', 'grade_updated_at'];
 const SELF_EDITABLE_STUDENT_COLS = ['phone', 'address'];
+const FILL_IF_BLANK_STUDENT_COLS = ['first_name', 'last_name', 'date_of_birth']; // key information a new student may complete once (GEN-31)
 
 const TABLE_LABEL: Record<string, string> = {
   departments: 'departments', terms: 'the term calendar', faculty: 'faculty information', faculty_teaches_in: 'faculty information', courses: 'the course catalog',
@@ -85,9 +86,10 @@ function refusal(c: Change, { user: me, isNew }: Actor, before: Db, after: Db, t
         return staff && has('ER') ? null : 'Adding a student record requires staff access to Student Record (ER).';
       }
       if (staff && has('ER')) return null;
-      if (me.studentId === c.after.id && changedCols(c).every((k) => SELF_EDITABLE_STUDENT_COLS.includes(k))) return null;
+      const blank = (k: string) => c.before![k] == null || String(c.before![k]).trim() === '';
+      if (me.studentId === c.after.id && changedCols(c).every((k) => SELF_EDITABLE_STUDENT_COLS.includes(k) || (FILL_IF_BLANK_STUDENT_COLS.includes(k) && blank(k)))) return null;
       return me.studentId === c.after.id
-        ? 'Students can change only their own telephone and address. Ask the registrar to change the rest of your record.'
+        ? 'Students can change their own telephone and address, and fill in missing key information once. Ask the registrar to change the rest of your record.'
         : 'You can change only your own student record.';
     }
 

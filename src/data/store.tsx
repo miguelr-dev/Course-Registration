@@ -3,12 +3,13 @@ import { useAuth, useClerk, useSession, useUser } from '@clerk/react';
 import { createSeed } from './seed';
 import { canSwitchRoles, effectiveUser, type ViewAs } from '../lib/viewAs';
 import { SyncClient } from './sync';
-import type { Course, Db, NoteCategory, OutlineStatus, RegistrationType, Student, Subsystem, User } from './types';
+import type { CompletedCourse, Course, Db, NoteCategory, OutlineStatus, RegistrationType, Student, Subsystem, TransferCourse, User } from './types';
 import { applyCourseSave, type CourseIssue } from '../lib/catalog';
 import { nowIso } from '../lib/format';
 import { registrationIssues, type EligibilityIssue } from '../lib/rules';
 import { adminEmails, isAllowedEmail, provisionUser } from '../lib/auth';
-import { changedFields, LABELS, normalizeStudentInfo, SELF_EDITABLE, studentInfoIssue, type StudentInfo } from '../lib/student';
+import { changedFields, keyInfoBlock, LABELS, normalizeStudentInfo, selfEditableFields, studentInfoIssue, type StudentInfo } from '../lib/student';
+import { applyHistorySave, type HistoryIssue, type HistoryKind } from '../lib/courseHistory';
 
 const STORAGE_KEY = 'signmeup.db.v4'; // local cache of the shared document (and the whole store when the API is unavailable)
 const STAMP_KEY = 'signmeup.stamped.v4';
@@ -65,6 +66,7 @@ interface StoreApi {
   appendNote(studentId: string, category: NoteCategory, text: string): void;
   updateStudent(studentId: string, info: StudentInfo): { ok: true } | { ok: false; field: keyof StudentInfo; reason: string; requirement: string };
   saveCourse(course: Course, originalId: string | null): { ok: true } | ({ ok: false } & CourseIssue);
+  saveCourseHistory(studentId: string, kind: HistoryKind, entry: CompletedCourse | TransferCourse, originalKey: string | null): { ok: true } | ({ ok: false } & HistoryIssue);
   setOutlineStatus(studentId: string, courseId: string, status: OutlineStatus, note?: string): void;
   addOutlineCourse(studentId: string, courseId: string): void;
   setGrade(scheduleNo: string, studentId: string, grade: string, note?: string): void;
@@ -261,6 +263,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     ...d, transactions: [...d.transactions, { at: nowIso(), by: by ?? user?.name ?? 'System', subsystem, text }],
   }), [user]);
 
+  /** GEN-31: the standard message when a function needs a complete student record, or null. */
+  const blockFor = (studentId: string) => {
+    const s = db.students.find((x) => x.id === studentId);
+    const b = s ? keyInfoBlock(s) : null;
+    return b ? `${b.reason} ${b.requirement}` : null;
+  };
+
   const api: StoreApi = {
     db, user, realUser, viewAs: canSwitchRoles(realUser) ? viewAs : null, session, mode, syncError, lastSaveMs,
     dismissSyncError() { setSyncError(null); },
@@ -316,13 +325,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     updateStudent(studentId, info) {
       const student = db.students.find((s) => s.id === studentId);
       if (!student) return { ok: false, field: 'lastName', reason: `Student ${studentId} was not found.`, requirement: 'Choose a student from the search.' };
-      // A student may change only their own contact details; staff entries must leave the whole record valid.
+      // A student may change their own contact details and fill in key information that is still blank; staff entries must leave the whole record valid.
       const own = user?.role === 'student';
       if (own && user?.studentId !== studentId) return { ok: false, field: 'phone', reason: 'You can change only your own record.', requirement: 'Open your own student record.' };
-      const issue = studentInfoIssue(db, info, undefined, own ? SELF_EDITABLE : undefined);
+      const allowed = own ? selfEditableFields(student) : undefined;
+      const issue = studentInfoIssue(db, info, undefined, allowed);
       if (issue) return { ok: false, ...issue };
       const normalized = normalizeStudentInfo(info);
-      const next = own ? { ...student, phone: normalized.phone, address: normalized.address } : normalized;
+      const next: StudentInfo = allowed ? { ...student, ...Object.fromEntries(allowed.map((f) => [f, normalized[f]])) } : normalized;
       const changed = changedFields(student, next);
       if (!changed.length) return { ok: true };
       commit((d) => stamp({
@@ -340,7 +350,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     },
 
+    saveCourseHistory(studentId, kind, entry, originalKey) {
+      // ER-01, ER-04: staff maintain course completion information; the server limits it to staff with ER access (GEN-05).
+      if (user?.role === 'student') return { ok: false, field: 'record', reason: 'Course history is entered by the registrar or another staff member.', requirement: 'Ask the registrar to add or correct the course.' };
+      const r = applyHistorySave(db, studentId, kind, entry, originalKey);
+      if (!r.ok) return r;
+      if (r.log) { const log = r.log; commit((d) => { const again = applyHistorySave(d, studentId, kind, entry, originalKey); return again.ok && again.log ? stamp(again.db, 'ER', log) : d; }); }
+      return { ok: true };
+    },
+
     setOutlineStatus(studentId, courseId, status, note) {
+      const blocked = blockFor(studentId);
+      if (blocked) { setSyncError(blocked); return; }
       const at = nowIso();
       const by = user?.name ?? 'System';
       commit((d) => stamp({
@@ -359,6 +380,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
 
     addOutlineCourse(studentId, courseId) {
+      const blocked = blockFor(studentId);
+      if (blocked) { setSyncError(blocked); return; }
       const at = nowIso();
       const by = user?.name ?? 'System';
       commit((d) => stamp({
