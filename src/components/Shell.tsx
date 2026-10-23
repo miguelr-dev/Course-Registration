@@ -8,6 +8,7 @@ import { HELP } from './help';
 import { Help, NewWindow, Print, SignOut, UserIcon, X } from './icons';
 import { Banner } from './ui';
 import { useEscapeToCancel } from './draft';
+import { saveTimeLabel } from '../lib/performance';
 
 interface ShellCtx { toast(msg: string): void; }
 const ShellContext = createContext<ShellCtx>({ toast: () => {} });
@@ -58,7 +59,7 @@ export function Shell({ children, panel, helpKey, screen }: { children: ReactNod
             )}
             {children}
           </HeaderActionsContext.Provider>
-          <div className="foot"><span>{screen}</span><span>SignMeUp · CS 532 prototype{mode === 'shared' ? ` · shared database${lastSaveMs !== null ? ` · last save ${lastSaveMs} ms` : ''}` : mode === 'local' ? ' · local mode' : ''}</span></div>
+          <div className="foot"><span>{screen}</span><span>SignMeUp · CS 532 prototype{mode === 'shared' ? ` · shared database${lastSaveMs !== null ? ` · ${saveTimeLabel(lastSaveMs)}` : ''}` : mode === 'local' ? ' · local mode' : ''}</span></div>
         </div>
         {panel}
         {help && (

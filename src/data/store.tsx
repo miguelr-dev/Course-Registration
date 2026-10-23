@@ -3,7 +3,8 @@ import { useAuth, useClerk, useSession, useUser } from '@clerk/react';
 import { createSeed } from './seed';
 import { canSwitchRoles, effectiveUser, type ViewAs } from '../lib/viewAs';
 import { SyncClient } from './sync';
-import type { Db, NoteCategory, OutlineStatus, RegistrationType, Student, Subsystem, User } from './types';
+import type { Course, Db, NoteCategory, OutlineStatus, RegistrationType, Student, Subsystem, User } from './types';
+import { changedCourseFields, courseIssue, normalizeCourse, type CourseIssue } from '../lib/catalog';
 import { nowIso } from '../lib/format';
 import { registrationIssues, type EligibilityIssue } from '../lib/rules';
 import { adminEmails, isAllowedEmail, provisionUser } from '../lib/auth';
@@ -63,6 +64,7 @@ interface StoreApi {
   requestWaiver(studentId: string, courseId: string, note: string): void;
   appendNote(studentId: string, category: NoteCategory, text: string): void;
   updateStudent(studentId: string, info: StudentInfo): { ok: true } | { ok: false; field: keyof StudentInfo; reason: string; requirement: string };
+  saveCourse(course: Course, originalId: string | null): { ok: true } | ({ ok: false } & CourseIssue);
   setOutlineStatus(studentId: string, courseId: string, status: OutlineStatus, note?: string): void;
   addOutlineCourse(studentId: string, courseId: string): void;
   setGrade(scheduleNo: string, studentId: string, grade: string, note?: string): void;
@@ -327,6 +329,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ...d,
         students: d.students.map((s) => (s.id === studentId ? { ...s, ...next } : s)),
       }, 'ER', `Updated ${changed.map((f) => LABELS[f].toLowerCase()).join(', ')} for student ${studentId}`));
+      return { ok: true };
+    },
+
+    saveCourse(course, originalId) {
+      // FCI-03: the registrar (or an administrator) adds and maintains catalog courses; the server enforces the same rule (GEN-05).
+      if (user?.role !== 'registrar' && user?.role !== 'admin') return { ok: false, field: 'id', reason: 'Changing the course catalog requires the registrar or a system administrator.', requirement: 'Ask the registrar to make this change.' };
+      const issue = courseIssue(db, course, originalId);
+      if (issue) return { ok: false, ...issue };
+      const next = normalizeCourse(course);
+      const prev = originalId ? db.courses.find((c) => c.id === originalId) : undefined;
+      if (prev) {
+        const changed = changedCourseFields(prev, next);
+        if (!changed.length) return { ok: true };
+        commit((d) => stamp({ ...d, courses: d.courses.map((c) => (c.id === next.id ? next : c)) }, 'FCI', `Updated ${changed.join(', ')} for course ${next.id}`));
+      } else {
+        commit((d) => stamp({ ...d, courses: [...d.courses, next] }, 'FCI', `Added course ${next.id} ${next.title}`));
+      }
       return { ok: true };
     },
 
