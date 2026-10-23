@@ -64,9 +64,9 @@ interface StoreApi {
   drop(studentId: string, scheduleNo: string): void;
   requestWaiver(studentId: string, courseId: string, note: string): void;
   appendNote(studentId: string, category: NoteCategory, text: string): void;
+  saveCourseHistory(studentId: string, kind: HistoryKind, entry: CompletedCourse | TransferCourse, originalKey: string | null): { ok: true } | ({ ok: false } & HistoryIssue);
   updateStudent(studentId: string, info: StudentInfo): { ok: true } | { ok: false; field: keyof StudentInfo; reason: string; requirement: string };
   saveCourse(course: Course, originalId: string | null): { ok: true } | ({ ok: false } & CourseIssue);
-  saveCourseHistory(studentId: string, kind: HistoryKind, entry: CompletedCourse | TransferCourse, originalKey: string | null): { ok: true } | ({ ok: false } & HistoryIssue);
   setOutlineStatus(studentId: string, courseId: string, status: OutlineStatus, note?: string): void;
   addOutlineCourse(studentId: string, courseId: string): void;
   setGrade(scheduleNo: string, studentId: string, grade: string, note?: string): void;
@@ -342,20 +342,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     },
 
-    saveCourse(course, originalId) {
-      // FCI-03: the registrar (or an administrator) adds and maintains catalog courses; the server enforces the same rule (GEN-05).
-      const r = applyCourseSave(db, user, course, originalId);
-      if (!r.ok) return r;
-      if (r.log) { const log = r.log; commit((d) => { const again = applyCourseSave(d, user, course, originalId); return again.ok && again.log ? stamp(again.db, 'FCI', log) : d; }); }
-      return { ok: true };
-    },
-
     saveCourseHistory(studentId, kind, entry, originalKey) {
       // ER-01, ER-04: staff maintain course completion information; the server limits it to staff with ER access (GEN-05).
       if (user?.role === 'student') return { ok: false, field: 'record', reason: 'Course history is entered by the registrar or another staff member.', requirement: 'Ask the registrar to add or correct the course.' };
       const r = applyHistorySave(db, studentId, kind, entry, originalKey);
       if (!r.ok) return r;
       if (r.log) { const log = r.log; commit((d) => { const again = applyHistorySave(d, studentId, kind, entry, originalKey); return again.ok && again.log ? stamp(again.db, 'ER', log) : d; }); }
+      return { ok: true };
+    },
+
+    saveCourse(course, originalId) {
+      // FCI-03: the registrar (or an administrator) adds and maintains catalog courses; the server enforces the same rule (GEN-05).
+      const r = applyCourseSave(db, user, course, originalId);
+      if (!r.ok) return r;
+      if (r.log) { const log = r.log; commit((d) => { const again = applyCourseSave(d, user, course, originalId); return again.ok && again.log ? stamp(again.db, 'FCI', log) : d; }); }
       return { ok: true };
     },
 
