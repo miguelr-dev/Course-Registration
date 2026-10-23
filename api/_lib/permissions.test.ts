@@ -64,6 +64,21 @@ describe('object-based security', () => {
     expect(check(ROSA, editStudent(TOMAS, { majorId: 'UNDECLARED', minorId: 'MATH-MIN' }))).toEqual({ ok: true });
   });
 
+  it('lets a student fill in blank key information once, but not overwrite it', () => {
+    const blankDob: Db = editStudent(MARIA, { dateOfBirth: '' });
+    const filled: Db = { ...blankDob, students: blankDob.students.map((s) => (s.id === MARIA ? { ...s, dateOfBirth: '2005-03-04' } : s)) };
+    expect(checkObjectPermissions(email(MARIA), blankDob, filled, [], MID_TERM)).toEqual({ ok: true });
+    expect(check(MARIA, editStudent(MARIA, { dateOfBirth: '2001-01-01' })).ok).toBe(false);
+    expect(check(MARIA, editStudent(MARIA, { lastName: 'Reyes' })).ok).toBe(false);
+  });
+
+  it('keeps course history with staff who have Student Record access', () => {
+    const added = (id: string): Db => ({ ...db, students: db.students.map((s) => (s.id === id ? { ...s, completed: [...s.completed, { courseId: 'CS 101', title: 'Programming I', term: 'Winter 2023', units: 4, grade: 'A' }] } : s)) });
+    expect(check(PRIYA, added(TOMAS))).toEqual({ ok: true });
+    expect(check(MARIA, added(MARIA)).ok).toBe(false);
+    expect(check(nakamura.id, added(TOMAS)).ok).toBe(false);
+  });
+
   it('keeps notes append-only and stamped with the author’s own ID', () => {
     expect(check(PRIYA, addNote(TOMAS, PRIYA))).toEqual({ ok: true });
     expect(check(PRIYA, addNote(TOMAS, ROSA)).ok).toBe(false);

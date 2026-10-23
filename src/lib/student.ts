@@ -64,6 +64,25 @@ export function missingKeyInfo(s: Student): (keyof StudentInfo)[] {
   return (['lastName', 'phone', 'address', 'dateOfBirth'] as const).filter((f) => !String(s[f] ?? '').trim());
 }
 
+/**
+ * Processing block (GEN-31): until the key student information is complete there is no usable
+ * student record to attach anything to, so registration, outline changes and course history
+ * entry are refused with this reason and requirement.
+ */
+export function keyInfoBlock(s: Student): { reason: string; requirement: string } | null {
+  const missing = missingKeyInfo(s);
+  if (!missing.length) return null;
+  return {
+    reason: `The student record for ${s.id} is incomplete (missing ${missing.map((f) => LABELS[f].toLowerCase()).join(', ')}).`,
+    requirement: 'Complete the key student information (last name, telephone, address and date of birth) on the Student Record screen first.',
+  };
+}
+
+/** Fields a student may enter on their own record: contact details, plus key information that is still blank. */
+export function selfEditableFields(s: Student): (keyof StudentInfo)[] {
+  return [...SELF_EDITABLE, ...(['firstName', 'lastName', 'dateOfBirth'] as const).filter((f) => !String(s[f] ?? '').trim())];
+}
+
 /** Field names whose stored values differ, for the transaction label. */
 export function changedFields(before: StudentInfo, after: StudentInfo): (keyof StudentInfo)[] {
   return (Object.keys(LABELS) as (keyof StudentInfo)[]).filter((k) => (before[k] ?? '') !== (after[k] ?? ''));

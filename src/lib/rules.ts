@@ -1,4 +1,5 @@
 import type { Course, Db, Offering, Registration, Student } from '../data/types';
+import { keyInfoBlock } from './student';
 
 export const MAX_UNITS = 18;
 
@@ -86,7 +87,7 @@ export function conflicts(a: Offering, b: Offering): boolean {
 }
 
 export interface EligibilityIssue {
-  code: 'prereq' | 'seats' | 'conflict' | 'units' | 'duplicate' | 'level' | 'graduate' | 'waiver';
+  code: 'prereq' | 'seats' | 'conflict' | 'units' | 'duplicate' | 'level' | 'graduate' | 'waiver' | 'record';
   /** Reason the registration is rejected. */
   reason: string;
   /** Minimum requirement for the entry to be accepted. */
@@ -108,6 +109,8 @@ export function prereqStatus(db: Db, student: Student, course: Course): { met: b
 export function registrationIssues(db: Db, student: Student, offering: Offering): EligibilityIssue[] {
   const course = courseOf(db, offering.courseId);
   if (!course) return [{ code: 'level', reason: 'Course not found in the catalog.', requirement: 'Choose a course from the current offerings.' }];
+  const block = keyInfoBlock(student); // GEN-31: nothing can be attached to an incomplete record
+  if (block) return [{ code: 'record', ...block }];
   const issues: EligibilityIssue[] = [];
   const regs = currentRegistrations(db, student.id);
 
@@ -159,7 +162,7 @@ export function registrationIssues(db: Db, student: Student, offering: Offering)
 /** Major courses that are on the approved outline, have prerequisites completed, and still have seats. */
 export function eligibleMajorOfferings(db: Db, student: Student): Offering[] {
   const outline = db.outlines.find((o) => o.studentId === student.id);
-  if (!outline) return [];
+  if (!outline || keyInfoBlock(student)) return []; // GEN-31: no registration until the record is complete
   const approved = new Set(outline.entries.filter((e) => e.status === 'approved').map((e) => e.courseId));
   const done = completedCourseIds(student);
   const registered = new Set(currentRegistrations(db, student.id).map((r) => offeringOf(db, r.scheduleNo)?.courseId));

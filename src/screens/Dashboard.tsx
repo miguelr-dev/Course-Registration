@@ -1,7 +1,8 @@
 import { Link, Navigate } from 'react-router-dom';
 import { useStore } from '../data/store';
 import { Shell, PageHeader, Dot, useToast } from '../components/Shell';
-import { Chip, Empty, PrereqChip, SeatsChip, Stamp, StatusChip } from '../components/ui';
+import { Banner, Chip, Empty, PrereqChip, SeatsChip, Stamp, StatusChip } from '../components/ui';
+import { keyInfoBlock } from '../lib/student';
 import { X } from '../components/icons';
 import { courseOf, currentRegistrations, eligibleMajorOfferings, MAX_UNITS, offeringOf, seatsOpen, unitsRegistered } from '../lib/rules';
 import { formatDate, formatTimeRange, shortName } from '../lib/format';
@@ -17,6 +18,7 @@ export default function Dashboard() {
   const regs = currentRegistrations(db, student.id);
   const units = unitsRegistered(db, student.id);
   const eligible = eligibleMajorOfferings(db, student);
+  const block = keyInfoBlock(student); // GEN-31: registration waits for a complete record
   const outline = db.outlines.find((o) => o.studentId === student.id);
   const last = [...db.transactions].reverse().find((t) => t.subsystem === 'REG' && t.by === user.name);
   const recentChanges = outline ? [...outline.entries].filter((e) => e.statusDate >= '2026-08-01').sort((a, b) => b.statusDate.localeCompare(a.statusDate)).slice(0, 4) : [];
@@ -35,6 +37,8 @@ export default function Dashboard() {
       >
         <Link to="/search" className="btn">Search courses</Link>
       </PageHeader>
+
+      {block && <Banner kind="warn"><strong>{block.reason}</strong> {block.requirement} Registration is blocked until then. <Link to="/record">Open your student record</Link></Banner>}
 
       <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '4fr 8fr', gap: 24, alignItems: 'start' }}>
         <div className="card">

@@ -3,11 +3,12 @@ import { useParams } from 'react-router-dom';
 import { useStore } from '../data/store';
 import type { OutlineStatus } from '../data/types';
 import { Shell, PageHeader, Dot, useToast } from '../components/Shell';
-import { Empty, Progress, StatusChip } from '../components/ui';
+import { Banner, Empty, Progress, StatusChip } from '../components/ui';
 import { Plus } from '../components/icons';
 import { completedCourseIds, courseOf, currentRegistrations, offeringOf } from '../lib/rules';
 import { formatDate, formatDateTime, shortName } from '../lib/format';
 import { useEscapeToCancel } from '../components/draft';
+import { keyInfoBlock } from '../lib/student';
 
 const COLS_EDIT = '84px 1fr 100px 100px 140px 120px';
 const COLS_VIEW = '84px 1fr 100px 100px 140px';
@@ -17,7 +18,7 @@ export default function MajorOutline() {
   const toast = useToast();
   const params = useParams();
   const isStudent = user?.role === 'student';
-  const canEdit = user?.role === 'advisor' || user?.role === 'admin' || user?.role === 'registrar';
+  const mayEdit = user?.role === 'advisor' || user?.role === 'admin' || user?.role === 'registrar';
   const [pickedId, setPickedId] = useState<string>(params.studentId ?? '');
   const studentId = isStudent ? user!.studentId! : pickedId || db.students[0]?.id;
   const student = db.students.find((s) => s.id === studentId);
@@ -27,6 +28,8 @@ export default function MajorOutline() {
   const [editing, setEditing] = useState<{ courseId: string; status: OutlineStatus; note: string } | null>(null);
   useEscapeToCancel(editing !== null || adding !== '', () => { setEditing(null); setAdding(''); });
 
+  const block = student ? keyInfoBlock(student) : null; // GEN-31
+  const canEdit = mayEdit && !block;
   if (!student || !outline) return <Shell helpKey="outline" screen="MAJOR · Approved major outline"><PageHeader title="Approved major outline" /><Empty>No approved outline on file for this student.</Empty></Shell>;
 
   const major = db.majors.find((m) => m.id === outline.majorId)!;
@@ -78,6 +81,8 @@ export default function MajorOutline() {
           </div>
         )}
       </PageHeader>
+
+      {block && <Banner kind="warn"><strong>{block.reason}</strong> {block.requirement} Outline changes are blocked until then.</Banner>}
 
       <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '4fr 8fr', gap: 24, alignItems: 'start' }}>
         <div className="stack" style={{ gap: 16 }}>
