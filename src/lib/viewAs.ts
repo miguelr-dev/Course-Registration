@@ -10,12 +10,13 @@ import { fullName } from './names.js';
  */
 export interface ViewAs { role: Role; studentId?: string; facultyId?: string; }
 
-export const ROLE_VIEWS: Record<Role, { label: string; jobTitle: string; access: Subsystem[]; summary: string }> = {
-  student: { label: 'Student', jobTitle: 'Student', access: STUDENT_ACCESS, summary: 'Own record, registration, own outline, faculty & courses' },
-  faculty: { label: 'Faculty', jobTitle: 'Faculty', access: ['FCI', 'GRADE'], summary: 'Grades for courses they teach, faculty & courses' },
-  advisor: { label: 'Major advisor', jobTitle: 'Major advisor', access: ['ER', 'REG', 'MAJOR', 'FCI'], summary: 'Student records and approved outlines' },
-  registrar: { label: 'Department user / registrar', jobTitle: 'Registrar staff', access: ['ER', 'REG', 'MAJOR', 'FCI', 'GRADE'], summary: 'Records, outlines, grade updates, catalog' },
-  admin: { label: 'System administrator', jobTitle: 'System administrator', access: ALL_ACCESS, summary: 'Everything, including authorized users' },
+/** `short` fits the sidebar button; `label` is used in the menu and the banner. */
+export const ROLE_VIEWS: Record<Role, { label: string; short: string; jobTitle: string; access: Subsystem[]; summary: string }> = {
+  student: { label: 'Student', short: 'Student', jobTitle: 'Student', access: STUDENT_ACCESS, summary: 'Own record, registration, own outline, faculty & courses' },
+  faculty: { label: 'Faculty', short: 'Faculty', jobTitle: 'Faculty', access: ['FCI', 'GRADE'], summary: 'Grades for courses they teach, faculty & courses' },
+  advisor: { label: 'Major advisor', short: 'Advisor', jobTitle: 'Major advisor', access: ['ER', 'REG', 'MAJOR', 'FCI'], summary: 'Student records and approved outlines' },
+  registrar: { label: 'Department user / registrar', short: 'Registrar', jobTitle: 'Registrar staff', access: ['ER', 'REG', 'MAJOR', 'FCI', 'GRADE'], summary: 'Records, outlines, grade updates, catalog' },
+  admin: { label: 'System administrator', short: 'Administrator', jobTitle: 'System administrator', access: ALL_ACCESS, summary: 'Everything, including authorized users' },
 };
 
 export const ROLE_ORDER: Role[] = ['student', 'faculty', 'advisor', 'registrar', 'admin'];

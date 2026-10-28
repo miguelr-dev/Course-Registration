@@ -37,8 +37,8 @@ export function RoleSwitcher() {
 
   return (
     <div className="role-switch no-print">
-      <button className={`btn ${viewAs ? '' : 'secondary '}sm`} style={{ width: '100%' }} onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="menu">
-        {viewAs ? `Viewing as ${ROLE_VIEWS[viewAs.role].label}` : 'View as role…'}
+      <button className={`btn ${viewAs ? '' : 'secondary '}sm`} style={{ width: '100%' }} onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="menu" title={viewAs ? `Viewing as ${describeView(db, viewAs)}` : 'See SignMeUp as each user type'}>
+        {viewAs ? `Viewing as ${ROLE_VIEWS[viewAs.role].short}` : 'View as role…'}
       </button>
       {open && <>
         <div className="role-scrim" onClick={() => setOpen(false)} />
