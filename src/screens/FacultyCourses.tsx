@@ -4,6 +4,7 @@ import { Shell, PageHeader, useToast } from '../components/Shell';
 import { Banner, Empty } from '../components/ui';
 import { Print, Search, X } from '../components/icons';
 import { useEscapeToCancel, useWarnBeforeLeaving } from '../components/draft';
+import { useProgressive } from '../components/progressive';
 import type { Course, Db, Faculty } from '../data/types';
 import { canMaintainCatalog, type CourseField, type CourseIssue } from '../lib/catalog';
 import type { FacultyEntry, FacultyField, FacultyIssue } from '../lib/faculty';
@@ -25,6 +26,8 @@ export default function FacultyCourses() {
   const facultyMode = mode === 'facultyName' || mode === 'facultyId';
   const facultyMatches = useMemo(() => db.faculty.filter((f) => (!dept || f.deptId === dept || f.teachesIn.includes(dept)) && wildcardMatch(q, mode === 'facultyId' ? f.id : f.name)), [db.faculty, q, dept, mode]);
   const courseMatches = useMemo(() => db.courses.filter((c) => (!dept || c.deptId === dept) && wildcardMatch(q, mode === 'courseId' ? c.id : c.title)), [db.courses, q, dept, mode]);
+  const facultyPage = useProgressive(facultyMatches, `${mode}|${q}|${dept}`);
+  const coursePage = useProgressive(courseMatches, `${mode}|${q}|${dept}`);
 
   const faculty = facultyMode ? db.faculty.find((f) => f.id === sel) ?? facultyMatches[0] : undefined;
   const course = !facultyMode ? db.courses.find((c) => c.id === sel) ?? courseMatches[0] : undefined;
@@ -72,13 +75,14 @@ export default function FacultyCourses() {
           <div className="card-head"><h2>{(facultyMode ? facultyMatches : courseMatches).length} {(facultyMode ? facultyMatches : courseMatches).length === 1 ? 'match' : 'matches'}</h2><span className="sub">{q || 'all'}</span></div>
           <div className="rows">
             {facultyMode && facultyMatches.length === 0 && <Empty>No faculty match.</Empty>}
-            {facultyMode && facultyMatches.map((f) => (
+            {facultyMode && facultyPage.visible.map((f) => (
               <div key={f.id} className={`row clickable${faculty?.id === f.id ? ' selected' : ''}`} style={{ gridTemplateColumns: '1fr', gap: 2 }} onClick={() => setSel(f.id)}><span className="title">{f.name}</span><span className="detail">{f.id} · {deptName(f.deptId)}</span></div>
             ))}
             {!facultyMode && courseMatches.length === 0 && <Empty>No courses match.</Empty>}
-            {!facultyMode && courseMatches.map((c) => (
+            {!facultyMode && coursePage.visible.map((c) => (
               <div key={c.id} className={`row clickable${course?.id === c.id ? ' selected' : ''}`} style={{ gridTemplateColumns: '1fr', gap: 2 }} onClick={() => setSel(c.id)}><span className="title">{c.id} · {c.title}</span><span className="detail">{c.units} units · {deptName(c.deptId)}</span></div>
             ))}
+            {facultyMode ? facultyPage.more : coursePage.more}
           </div>
         </div>
 
@@ -86,7 +90,7 @@ export default function FacultyCourses() {
           <div className="stack" style={{ gap: 16 }}>
             <div className="card">
               <div className="card-head"><div><h2>{faculty.name}</h2><div className="sub">{faculty.positionTitle} · Faculty ID {faculty.id}</div></div><div className="actions">{canMaintain && <button className="btn secondary sm no-print" onClick={() => { setEditing(null); setEditingFaculty({ entry: { faculty, courses: db.courses.filter((c) => c.qualifiedFaculty.includes(faculty.id)).map((c) => c.id) }, originalId: faculty.id }); }}>Edit faculty</button>}<button className="btn secondary sm" onClick={() => window.print()}><Print />Print</button></div></div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px 32px', padding: '16px 20px' }}>
+              <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px 32px', padding: '16px 20px' }}>
                 <div className="kv"><span className="k">Department</span><span>{deptName(faculty.deptId)}</span><span className="k">Teaches in</span><span>{faculty.teachesIn.map(deptName).join(', ')}</span><span className="k">Office</span><span>{faculty.office}</span></div>
                 <div className="kv"><span className="k">Office phone</span><span>{faculty.officePhone}</span><span className="k">Office hours</span><span>{faculty.officeHours}</span><span className="k">Email</span><span>{faculty.email}</span></div>
               </div>
@@ -97,7 +101,7 @@ export default function FacultyCourses() {
                   <div className="card-head"><h2>Authorized to teach</h2><span className="sub">{list.length} courses · {offered} offered {db.term}</span></div>
                   <div className="rows">
                     <div className="row head" style={{ gridTemplateColumns: '84px 1fr 48px 200px' }}><span>Course</span><span>Title</span><span style={{ textAlign: 'right' }}>Units</span><span>Prerequisites</span></div>
-                    {list.map((c) => <div key={c.id} className="row" style={{ gridTemplateColumns: '84px 1fr 48px 200px' }}><span className="cid">{c.id}</span><span className="title">{c.title}</span><span className="num">{c.units}</span><span className="sub">{c.prereqs.join(', ') || 'None'}</span></div>)}
+                    {list.map((c) => <div key={c.id} className="row" style={{ gridTemplateColumns: '84px 1fr 48px 200px' }}><span className="cid">{c.id}</span><span className="title">{c.title}</span><span className="num">{c.units}<span className="show-small"> units</span></span><span className="sub"><span className="show-small">Prerequisites: </span>{c.prereqs.join(', ') || 'None'}</span></div>)}
                   </div>
                 </>
               ); })()}
