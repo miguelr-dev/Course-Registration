@@ -39,6 +39,13 @@ async function loadTables(q: Q): Promise<Record<string, Row[]>> {
   return out;
 }
 
+/** A trivial query, so a scheduled call keeps the free Supabase project from pausing for inactivity. */
+export async function ping(): Promise<number> {
+  const started = Date.now();
+  await client().unsafe('select 1');
+  return Date.now() - started;
+}
+
 export async function readState(): Promise<Stored | null> {
   await ensureSchema();
   const s = client();

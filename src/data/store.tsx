@@ -193,7 +193,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           else if (w.kind === 'conflict' && w.db) { serverDb.current = w.db; version.current = w.version; setDb(w.db); }
           else {
             setMode('local');
-            const why = w.kind === 'refused' ? w.reason : w.kind === 'unavailable' ? `Shared database unavailable (${w.reason}).` : 'Shared database returned an empty document.';
+            const why = w.kind === 'refused' ? w.reason : w.kind === 'unavailable' ? `Shared database unavailable: ${w.reason}.` : 'Shared database returned an empty document.';
             setSyncError(`${why} Changes stay in this browser.`);
             return;
           }
@@ -201,7 +201,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setMode('shared');
       } else {
         setMode('local');
-        setSyncError(`Shared database unavailable (${r.reason}). Changes stay in this browser.`);
+        setSyncError(`Shared database unavailable: ${r.reason}. Changes stay in this browser.`);
       }
     })();
     return () => { cancelled = true; };

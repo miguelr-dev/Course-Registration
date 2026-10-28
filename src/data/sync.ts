@@ -11,6 +11,9 @@ export type SaveResult =
   | { kind: 'refused'; reason: string }
   | { kind: 'unavailable'; reason: string };
 
+/** Plain `npm run dev` serves the app but not the /api functions, so /api/db answers with the app's HTML page. */
+const NO_API = 'the database API is not running here. Plain npm run dev serves only the app; run vercel dev to use the shared database';
+
 /** Talks to /api/db: one shared document with compare-and-set versions. */
 export class SyncClient {
   constructor(private readonly getToken: () => Promise<string | null>) {}
@@ -32,6 +35,7 @@ export class SyncClient {
       const { status, json } = await this.request('GET');
       if (status === 200 && json) return { kind: 'ok', version: Number(json.version ?? 0), db: (json.db as Db | null) ?? null };
       if (status === 401 || status === 403) return { kind: 'denied', reason: String(json?.reason ?? 'Not allowed.') };
+      if (!json && status === 200) return { kind: 'unavailable', reason: NO_API };
       return { kind: 'unavailable', reason: String(json?.reason ?? `Shared database returned ${status}.`) };
     } catch (e) {
       return { kind: 'unavailable', reason: e instanceof Error ? e.message : 'Network error.' };

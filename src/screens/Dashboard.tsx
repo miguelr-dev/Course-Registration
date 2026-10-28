@@ -3,6 +3,7 @@ import { useStore } from '../data/store';
 import { Shell, PageHeader, Dot, useToast } from '../components/Shell';
 import { Banner, Chip, Empty, PrereqChip, SeatsChip, Stamp, StatusChip } from '../components/ui';
 import { keyInfoBlock } from '../lib/student';
+import { fullName } from '../lib/names';
 import { maxUnits } from '../lib/parameters';
 import { registrationClosed } from '../lib/schedule';
 import { ReportsButton } from '../components/Reports';
@@ -37,7 +38,7 @@ export default function Dashboard() {
   return (
     <Shell helpKey="dashboard" screen="REG · Student dashboard">
       <PageHeader
-        title={`Welcome back, ${student.firstName} ${student.lastName}`}
+        title={`Welcome back, ${fullName(student)}`}
         meta={<><span>ID {student.id}</span><Dot /><span>{major?.title}</span><Dot /><span>{db.term}</span></>}
       >
         <ReportsButton label="Print schedule" reports={[{ id: 'schedule', label: 'My schedule', build: () => studentScheduleReport(db, student.id) }]} />
@@ -46,6 +47,12 @@ export default function Dashboard() {
 
       {closed && !block && <Banner kind="info"><strong>Registration for {db.term} closed on {formatDate(db.registrationCloses)}.</strong> You can still drop courses. To add one, ask the registrar.</Banner>}
       {block && <Banner kind="warn"><strong>{block.reason}</strong> {block.requirement} Registration is blocked until then. <Link to="/record">Open your student record</Link></Banner>}
+
+      {(block || !outline || regs.length === 0) && <GettingStarted steps={[
+        { done: !block, title: 'Complete your student record', detail: block ? 'Telephone, address and date of birth are needed before anything else can be attached to your record.' : 'Name, contact details and date of birth are on file.', to: '/record', action: block ? 'Complete record' : 'View record' },
+        { done: !!outline, title: 'Get your major outline approved', detail: outline ? `Approved by ${outline.approvedBy}.` : 'Your major advisor enters and approves the courses you will take for your major. Until then, major courses are not recommended here.', to: '/outline', action: 'View outline' },
+        { done: regs.length > 0, title: `Register for ${db.term}`, detail: regs.length ? `${regs.length} ${regs.length === 1 ? 'course' : 'courses'}, ${units} units.` : closed ? `Registration closed on ${formatDate(db.registrationCloses)}; ask the registrar.` : `Open until ${formatDate(db.registrationCloses)}. Search courses or register below.`, to: '/search', action: 'Search courses' },
+      ]} />}
 
       <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '4fr 8fr', gap: 24, alignItems: 'start' }}>
         <div className="card">
@@ -77,7 +84,8 @@ export default function Dashboard() {
         <div className="card">
           <div className="card-head"><h2>Eligible major courses</h2><span className="sub">On your approved outline · prerequisites met · seats open</span></div>
           <div className="rows">
-            {eligible.length === 0 && <Empty>Nothing to add right now. Every approved course is either completed, in progress, or waiting on a prerequisite.</Empty>}
+            {eligible.length === 0 && !outline && <Empty>No approved outline yet. Once your advisor approves your major outline, the courses you can take next appear here. Meanwhile you can <Link to="/search">search all courses</Link>.</Empty>}
+            {eligible.length === 0 && outline && <Empty>Nothing to add right now. Every approved course is either completed, in progress, or waiting on a prerequisite.</Empty>}
             {eligible.map((o) => {
               const c = courseOf(db, o.courseId)!;
               const inst = db.faculty.find((f) => f.id === o.instructorId);
@@ -108,5 +116,27 @@ export default function Dashboard() {
         </div>
       </div>
     </Shell>
+  );
+}
+
+/**
+ * The normal order of entry (GEN-28): record, then outline, then registration. Each step links to its
+ * screen, so a student can still go to any screen out of sequence (GEN-29).
+ */
+function GettingStarted({ steps }: { steps: { done: boolean; title: string; detail: string; to: string; action: string }[] }) {
+  const next = steps.findIndex((s) => !s.done);
+  return (
+    <div className="card">
+      <div className="card-head"><h2>Getting started</h2><span className="sub">{steps.filter((s) => s.done).length} of {steps.length} done</span></div>
+      <ol className="steps">
+        {steps.map((s, i) => (
+          <li key={s.title} className={`step${s.done ? ' done' : ''}${i === next ? ' current' : ''}`}>
+            <span className="step-mark" aria-hidden>{s.done ? '✓' : i + 1}</span>
+            <div className="grow"><div className="title">{s.title}</div><div className="detail">{s.detail}</div></div>
+            <Link to={s.to} className={`btn sm ${i === next ? '' : 'secondary'}`}>{s.action}</Link>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }

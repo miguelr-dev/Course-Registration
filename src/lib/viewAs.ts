@@ -1,5 +1,6 @@
 import type { Db, Role, Subsystem, User } from '../data/types.js';
 import { ALL_ACCESS, STUDENT_ACCESS } from './auth.js';
+import { fullName } from './names.js';
 
 /**
  * Role switcher (FW-09): lets a system administrator see SignMeUp as each user type the
@@ -41,7 +42,7 @@ export function effectiveUser(real: User | null, view: ViewAs | null): User | nu
 export function describeView(db: Db, view: ViewAs): string {
   const label = ROLE_VIEWS[view.role].label;
   const s = view.studentId ? db.students.find((x) => x.id === view.studentId) : undefined;
-  if (s) return `${label} · ${s.firstName} ${s.lastName}`;
+  if (s) return `${label} · ${fullName(s)}`;
   const f = view.facultyId ? db.faculty.find((x) => x.id === view.facultyId) : undefined;
   return f ? `${label} · ${f.name}` : label;
 }
