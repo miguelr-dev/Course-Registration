@@ -4,6 +4,7 @@ import { Shell, PageHeader, Dot, useToast } from '../components/Shell';
 import { Banner, Chip, Empty, PrereqChip, SeatsChip, Stamp, StatusChip } from '../components/ui';
 import { keyInfoBlock } from '../lib/student';
 import { maxUnits } from '../lib/parameters';
+import { registrationClosed } from '../lib/schedule';
 import { ReportsButton } from '../components/Reports';
 import { studentScheduleReport } from '../lib/reports';
 import { X } from '../components/icons';
@@ -22,6 +23,7 @@ export default function Dashboard() {
   const units = unitsRegistered(db, student.id);
   const eligible = eligibleMajorOfferings(db, student);
   const block = keyInfoBlock(student); // GEN-31: registration waits for a complete record
+  const closed = registrationClosed(db) && user.role === 'student';
   const outline = db.outlines.find((o) => o.studentId === student.id);
   const last = [...db.transactions].reverse().find((t) => t.subsystem === 'REG' && t.by === user.name);
   const recentChanges = outline ? [...outline.entries].filter((e) => e.statusDate >= '2026-08-01').sort((a, b) => b.statusDate.localeCompare(a.statusDate)).slice(0, 4) : [];
@@ -42,6 +44,7 @@ export default function Dashboard() {
         <Link to="/search" className="btn">Search courses</Link>
       </PageHeader>
 
+      {closed && !block && <Banner kind="info"><strong>Registration for {db.term} closed on {formatDate(db.registrationCloses)}.</strong> You can still drop courses. To add one, ask the registrar.</Banner>}
       {block && <Banner kind="warn"><strong>{block.reason}</strong> {block.requirement} Registration is blocked until then. <Link to="/record">Open your student record</Link></Banner>}
 
       <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '4fr 8fr', gap: 24, alignItems: 'start' }}>
@@ -84,7 +87,7 @@ export default function Dashboard() {
                   <div><div className="title">{c.title}</div><div className="detail">{o.days} {formatTimeRange(o.start, o.end)} · {o.location} · {inst ? shortName(inst.name) : '—'} · {c.units} units</div></div>
                   <PrereqChip met />
                   <SeatsChip open={seatsOpen(db, o)} />
-                  <button className="btn sm no-print" style={{ height: 32 }} onClick={() => onRegister(o.scheduleNo, c.id)}>Register</button>
+                  <button className="btn sm no-print" style={{ height: 32 }} disabled={closed} title={closed ? 'Registration is closed' : undefined} onClick={() => onRegister(o.scheduleNo, c.id)}>Register</button>
                 </div>
               );
             })}

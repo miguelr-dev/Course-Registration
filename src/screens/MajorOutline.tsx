@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useStore } from '../data/store';
 import type { OutlineStatus } from '../data/types';
 import { Shell, PageHeader, Dot, useToast } from '../components/Shell';
@@ -72,6 +72,7 @@ export default function MajorOutline() {
             {db.students.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName} · {s.id}</option>)}
           </select>
         )}
+        <Link to="/majors" className="btn secondary no-print">Majors</Link>
         {/* MAJOR reports: required courses for any major (all users); the other three are limited to this student and their advisors by the screen itself */}
         <ReportsButton reports={[
           { id: 'status', label: 'Status against approved outline', build: () => outlineStatusReport(db, student.id) },

@@ -85,7 +85,7 @@ export function conflicts(a: Offering, b: Offering): boolean {
 }
 
 export interface EligibilityIssue {
-  code: 'prereq' | 'seats' | 'conflict' | 'units' | 'duplicate' | 'level' | 'graduate' | 'waiver' | 'record';
+  code: 'prereq' | 'seats' | 'conflict' | 'units' | 'duplicate' | 'level' | 'graduate' | 'waiver' | 'record' | 'closed';
   /** Reason the registration is rejected. */
   reason: string;
   /** Minimum requirement for the entry to be accepted. */

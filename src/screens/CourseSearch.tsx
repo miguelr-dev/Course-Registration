@@ -9,6 +9,9 @@ import { formatDate, formatTimeRange, shortName } from '../lib/format';
 import { wildcardMatch } from '../lib/wildcard';
 import { useEscapeToCancel } from '../components/draft';
 import { maxUnits } from '../lib/parameters';
+import { canMaintainCatalog } from '../lib/catalog';
+import { registrationClosed, registrationClosedIssue } from '../lib/schedule';
+import { Link } from 'react-router-dom';
 import { useProgressive } from '../components/progressive';
 import { ReportsButton } from '../components/Reports';
 import { departmentChoices, departmentOfferingsReport, seatsAvailableReport, studentScheduleReport } from '../lib/reports';
@@ -40,7 +43,9 @@ export default function CourseSearch() {
 
   const sel = selected ? db.offerings.find((o) => o.scheduleNo === selected) : undefined;
   const selCourse = sel && courseOf(db, sel.courseId);
-  const issues = sel && student ? registrationIssues(db, student, sel) : [];
+  const staff = user?.role === 'registrar' || user?.role === 'admin';
+  const closed = registrationClosed(db) && !staff; // after the deadline only staff can register
+  const issues = sel && student ? [...(closed ? [registrationClosedIssue(db)] : []), ...registrationIssues(db, student, sel)] : [];
   const lastReg = [...db.transactions].reverse().find((t) => t.subsystem === 'REG' && t.by === user?.name);
 
   function cancel() { setSelected(null); setType('letter'); setNote(''); }
@@ -96,7 +101,8 @@ export default function CourseSearch() {
 
   return (
     <Shell helpKey="search" screen="REG · Course search & registration" panel={panel}>
-      <PageHeader title="Search courses" meta={<><span>{db.term}</span><Dot /><span>Registration open until {formatDate(db.registrationCloses)}</span></>}>
+      <PageHeader title="Search courses" meta={<><span>{db.term}</span><Dot /><span>{registrationClosed(db) ? `Registration closed ${formatDate(db.registrationCloses)}` : `Registration open until ${formatDate(db.registrationCloses)}`}</span></>}>
+        {canMaintainCatalog(user) && <Link to="/schedule" className="btn secondary no-print">Class schedule</Link>}
         <ReportsButton reports={[
           ...(student ? [{ id: 'schedule', label: 'My schedule', build: () => studentScheduleReport(db, student.id) }] : []),
           { id: 'offered', label: 'Courses offered by a department', params: [{ key: 'dept', label: 'Department', options: dept ? [...departmentChoices(db).filter(([id]) => id === dept), ...departmentChoices(db).filter(([id]) => id !== dept)] : departmentChoices(db) }], build: (v) => departmentOfferingsReport(db, v.dept) },

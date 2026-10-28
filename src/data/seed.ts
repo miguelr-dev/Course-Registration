@@ -15,7 +15,7 @@ const T = '2026-09-12T14:41:00';
 export function createSeed(): Db {
   return {
     term: 'Fall 2026',
-    registrationCloses: '2026-09-26',
+    registrationCloses: '2026-12-11',
     gradeWindow: { opens: '2026-12-14', closes: '2026-12-21' },
 
     departments: [
