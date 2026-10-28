@@ -84,7 +84,7 @@ export default function MajorOutline() {
 
       {block && <Banner kind="warn"><strong>{block.reason}</strong> {block.requirement} Outline changes are blocked until then.</Banner>}
 
-      <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '4fr 8fr', gap: 24, alignItems: 'start' }}>
+      <div className="grid-2 stack-early" style={{ display: 'grid', gridTemplateColumns: '4fr 8fr', gap: 24, alignItems: 'start' }}>
         <div className="stack" style={{ gap: 16 }}>
           <div className="card">
             <div className="card-head"><h2>Major requirements</h2><span className="sub">{major.id}</span></div>

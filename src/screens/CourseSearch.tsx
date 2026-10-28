@@ -8,6 +8,7 @@ import { conflicts, courseOf, currentRegistrations, MAX_UNITS, prereqStatus, reg
 import { formatDate, formatTimeRange, shortName } from '../lib/format';
 import { wildcardMatch } from '../lib/wildcard';
 import { useEscapeToCancel } from '../components/draft';
+import { useProgressive } from '../components/progressive';
 
 const COLS = '84px 1fr 44px 130px 112px 92px'; // seats fits "3 seats left" and "120 of 120" chips, which never wrap
 
@@ -32,6 +33,7 @@ export default function CourseSearch() {
     if (q.trim() && !(wildcardMatch(q, c.id) || wildcardMatch(q, c.title) || wildcardMatch(q, o.scheduleNo))) return false;
     return true;
   }).sort((a, b) => a.courseId.localeCompare(b.courseId)), [db, q, dept, openOnly]);
+  const page = useProgressive(results, `${q}|${dept}|${openOnly}`);
 
   const sel = selected ? db.offerings.find((o) => o.scheduleNo === selected) : undefined;
   const selCourse = sel && courseOf(db, sel.courseId);
@@ -116,7 +118,7 @@ export default function CourseSearch() {
         <div className="rows">
           <div className="row head" style={{ gridTemplateColumns: COLS }}><span>Course · sched #</span><span>Title · instructor</span><span style={{ textAlign: 'right' }}>Units</span><span>Days / time · location</span><span>Seats</span><span>Prereqs</span></div>
           {results.length === 0 && <Empty>No offerings match. Clear a filter or widen the wildcard.</Empty>}
-          {results.map((o) => {
+          {page.visible.map((o) => {
             const c = courseOf(db, o.courseId)!;
             const pre = student ? prereqStatus(db, student, c) : { met: true, missing: [], inProgress: [] };
             const isOpen = expanded === o.scheduleNo;
@@ -132,7 +134,7 @@ export default function CourseSearch() {
                     </div>
                     <div className="detail">{instructorName(db, o)}</div>
                   </div>
-                  <span className="num">{c.units}</span>
+                  <span className="num">{c.units}<span className="show-small"> units</span></span>
                   <div><div>{o.days} {formatTimeRange(o.start, o.end)}</div><div className="detail">{o.location}</div></div>
                   <SeatsChip open={seatsOpen(db, o)} capacity={o.capacity} />
                   <PrereqChip met={pre.met} short />
@@ -153,6 +155,7 @@ export default function CourseSearch() {
                           </div>
                         );
                       })}
+          {page.more}
                     </div>
                   </div>
                 )}

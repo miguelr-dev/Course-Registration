@@ -81,8 +81,9 @@ h3 { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: upp
 .viewing-bar { display: flex; gap: 12px; align-items: center; padding: 10px 14px; border: 1px solid var(--warning-border); background: var(--warning-bg); color: var(--warning); border-radius: var(--radius); font-size: 13px; }
 .main { flex: 1; display: flex; flex-direction: column; padding: 32px 40px 24px; gap: 24px; min-width: 0; }
 .main.narrow { padding: 32px 32px 24px; }
-.header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
-.actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px 24px; }
+.header > .grow { min-width: min(100%, 280px); } /* when space runs out the actions wrap below the title instead of crushing it */
+.actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; min-width: 0; }
 .meta { color: var(--muted); margin-top: 6px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .foot { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; margin-top: auto; }
 
@@ -92,6 +93,7 @@ h3 { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: upp
 .card-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
 .card-foot { margin-top: auto; padding: 14px 20px 16px; border-top: 1px solid var(--border); background: var(--bg); border-radius: 0 0 var(--radius) var(--radius); display: flex; flex-direction: column; gap: 10px; }
 .rows { display: flex; flex-direction: column; }
+.load-more { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 14px; padding: 14px 20px; }
 .row { display: grid; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--row-border); }
 .row.head { padding: 10px 20px; color: var(--muted); font-size: 12px; font-weight: 600; background: var(--bg); border-bottom: 1px solid var(--border); }
 .row.selected { background: var(--primary-bg); }
@@ -169,7 +171,8 @@ textarea.input { height: auto; min-height: 72px; padding: 10px 12px; resize: ver
 .panel-foot { margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding: 16px 24px 20px; border-top: 1px solid var(--border); }
 .kv { display: grid; grid-template-columns: 120px 1fr; gap: 6px 12px; font-size: 13px; }
 .kv .k { color: var(--muted); }
-.stamp { display: flex; align-items: center; gap: 6px; padding: 12px 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+.kv > *, .detail { overflow-wrap: anywhere; } /* long emails and addresses break instead of overflowing */
+.stamp { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 12px 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
 .stamp.bare { padding: 10px 0 0; }
 .tile { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 .tile .big { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
@@ -204,8 +207,76 @@ textarea.input { height: auto; min-height: 72px; padding: 10px 12px; resize: ver
   body { background: #fff; }
 }
 
+/* Two-column pages whose wide table needs more room than the right column gets below 1440px */
+@media (max-width: 1440px) {
+  .grid-2.stack-early { grid-template-columns: 1fr !important; }
+}
+
+/* Phone and tablet layouts. Screens set their column templates inline for desktop; these rules
+   override them by class so every screen adapts without its own breakpoints. */
+.nav-toggle, .show-small { display: none; }
+
 @media (max-width: 1100px) {
   .nav { width: 200px; }
   .main, .main.narrow { padding: 24px; }
-  .grid-2, .grid-4 { grid-template-columns: 1fr !important; }
+  .grid-2 { grid-template-columns: 1fr !important; }
+  .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+
+/* Tablets and phones: the sidebar becomes a top bar with a menu, side panels become full-screen sheets. */
+@media (max-width: 900px) {
+  .shell { flex-direction: column; }
+  .nav { position: sticky; top: 0; z-index: 20; width: auto; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0; padding: 10px 16px; border-right: 0; border-bottom: 1px solid var(--border); }
+  .wordmark { padding: 0; font-size: 18px; }
+  .wordmark small { display: none; }
+  .nav-toggle { display: inline-flex; margin-left: auto; }
+  .nav-list, .nav .role-switch, .nav-user { display: none; }
+  .nav.open { max-height: 100dvh; overflow-y: auto; }
+  .nav.open .nav-list, .nav.open .role-switch, .nav.open .nav-user { display: flex; flex-basis: 100%; }
+  .nav.open .nav-list { margin-top: 12px; }
+  .nav.open .role-switch { margin-top: 12px; display: block; }
+  .nav.open .role-switch + .nav-user { margin-top: 8px; }
+  .role-menu { position: relative; left: auto; bottom: auto; width: auto; max-height: none; margin-top: 8px; box-shadow: none; } /* relative, not static, so it stays above the tap-to-close scrim */
+  .main, .main.narrow { padding: 20px 16px; gap: 16px; }
+  .panel { position: fixed; inset: 0; z-index: 30; width: auto; height: 100dvh; border-left: 0; }
+}
+
+/* Phones */
+@media (max-width: 640px) {
+  h1 { font-size: 22px; }
+  .header { flex-direction: column; gap: 12px; }
+  .actions { justify-content: flex-start; width: 100%; }
+  .actions > .input, .actions > .input-wrap, .actions > .cluster, .actions > select { width: 100% !important; }
+  .hide-small { display: none !important; }
+  .cluster { flex-wrap: wrap; }
+  .cluster > span.grow { min-width: max-content; } /* a label in a button row keeps its words together; buttons wrap below */
+  .show-small { display: inline; }
+  .grid-4 { gap: 10px !important; }
+  /* 16px text keeps iOS from zooming into a field when it is tapped */
+  .input, select.input, textarea.input { font-size: 16px; }
+  .card-head { flex-wrap: wrap; padding: 14px 16px 12px; }
+  .card-body, .card-foot { padding-left: 16px; padding-right: 16px; }
+  .tabs { overflow-x: auto; gap: 18px; padding: 0 16px; }
+  .tab { white-space: nowrap; }
+  /* Table rows become stacked cards: the first two cells (ID and title) lead, the rest wrap below. */
+  .row.head { display: none !important; }
+  .row, .row.tight { display: flex !important; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 12px 16px; }
+  .row > * { flex: 0 1 auto; min-width: 0; }
+  .row > :nth-child(2) { flex: 1 1 calc(100% - 120px); } /* ID and title share the first line; every other cell lines up below */
+  .row > :only-child { flex-basis: 100%; }
+  .row.lead-first > :first-child { flex-basis: 100%; } /* tables whose first cell is the main one (name · email) */
+  .row.lead-first > :nth-child(2) { flex: 0 1 auto; min-width: 0; }
+  .row .num { text-align: left; }
+  .row > :last-child:is(.btn, span:has(> .btn)) { margin-left: auto; }
+  .expand { grid-template-columns: 1fr !important; padding: 14px 16px !important; gap: 14px; }
+  .kv { grid-template-columns: 110px minmax(0, 1fr); }
+  .drawer-body dl { grid-template-columns: 1fr; gap: 2px; }
+  .drawer-body dd { margin-bottom: 8px; }
+  .window { left: 8px !important; right: 8px; top: auto !important; bottom: 8px; width: auto !important; height: 75dvh !important; resize: none; }
+  .window-bar { cursor: default; }
+  .viewing-bar { flex-wrap: wrap; }
+  .foot { flex-direction: column; gap: 4px; }
+  .toast { left: 16px; right: 16px; transform: none; bottom: 16px; }
+  .login { padding: 16px; }
+  .login > .stack { width: 100% !important; max-width: 420px; }
 }

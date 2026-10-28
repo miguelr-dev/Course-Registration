@@ -9,6 +9,7 @@ import { formatDate, formatDateTime, formatTimeRange } from '../lib/format';
 import { fillerName } from '../data/seed';
 import { wildcardMatch } from '../lib/wildcard';
 import { useEscapeToCancel, useWarnBeforeLeaving } from '../components/draft';
+import { useProgressive } from '../components/progressive';
 
 const COLS = '1.1fr 90px 90px 110px 1.7fr';
 
@@ -41,6 +42,7 @@ export default function GradeEntry() {
     const name = s ? `${s.firstName} ${s.lastName}` : fillerName(r.studentId);
     return { r, name };
   }).filter((x) => wildcardMatch(q, x.name) || wildcardMatch(q, x.r.studentId)).sort((a, b) => a.name.localeCompare(b.name)), [regs, db.students, q]);
+  const page = useProgressive(rows, `${offering?.scheduleNo}|${q}`, 25);
 
   if (!offering) return <Shell helpKey="grades" screen="GRADE · Grade sheet"><PageHeader title="Course grades" /><Empty>You are not the primary instructor of any course this term.</Empty></Shell>;
 
@@ -99,7 +101,7 @@ export default function GradeEntry() {
           <div className="rows">
             <div className="row head" style={{ gridTemplateColumns: COLS }}><span>Student</span><span>ID</span><span>Type</span><span>Grade</span><span>Note</span></div>
             {rows.length === 0 && <Empty>No students match.</Empty>}
-            {rows.map(({ r, name }) => (
+            {page.visible.map(({ r, name }) => (
               <div key={r.studentId}>
                 <div className="row" style={{ gridTemplateColumns: COLS }}>
                   <span className="title">{name}</span>
@@ -123,6 +125,7 @@ export default function GradeEntry() {
                 )}
               </div>
             ))}
+            {page.more}
           </div>
           {pendingCount > 0 && (
             <div className="card-foot no-print" style={{ background: 'var(--surface)' }}>

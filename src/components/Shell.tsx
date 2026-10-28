@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { NavLink, Link } from 'react-router-dom';
+import { NavLink, Link, useLocation } from 'react-router-dom';
 import { RoleSwitcher, ViewingBanner } from './RoleSwitcher';
 import { useStore } from '../data/store';
 import { MODULES } from '../modules';
 import { FloatingWindow, openInNewWindow } from './FloatingWindow';
 import { HELP } from './help';
-import { Help, NewWindow, Print, SignOut, UserIcon, X } from './icons';
+import { Help, Menu, NewWindow, Print, SignOut, UserIcon, X } from './icons';
 import { Banner } from './ui';
 import { useEscapeToCancel } from './draft';
 import { saveTimeLabel } from '../lib/performance';
@@ -18,7 +18,11 @@ export function Shell({ children, panel, helpKey, screen }: { children: ReactNod
   const { db, user, signOut, mode, syncError, dismissSyncError, lastSaveMs } = useStore();
   const [help, setHelp] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [menu, setMenu] = useState(false); // phones and tablets: the subsystem menu folds into the top bar
+  const { pathname } = useLocation();
+  useEffect(() => { setMenu(false); }, [pathname]);
   useEscapeToCancel(help, () => setHelp(false));
+  useEscapeToCancel(menu, () => setMenu(false));
 
   useEffect(() => {
     if (!toast) return;
@@ -32,9 +36,10 @@ export function Shell({ children, panel, helpKey, screen }: { children: ReactNod
   return (
     <ShellContext.Provider value={{ toast: setToast }}>
       <div className="shell">
-        <nav className="nav" aria-label="Subsystems">
+        <nav className={`nav${menu ? ' open' : ''}`} aria-label="Subsystems">
           <Link to="/" className="wordmark">SignMeUp<small>Course registration</small></Link>
-          <div className="nav-list">
+          <button className="btn secondary sm nav-toggle" onClick={() => setMenu(!menu)} aria-expanded={menu} aria-controls="nav-menu">{menu ? <X /> : <Menu />}{menu ? 'Close' : 'Menu'}</button>
+          <div className="nav-list" id="nav-menu">
             {items.map((m) => (
               <NavLink key={m.code} to={m.home} end={m.home === '/'} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>
                 <span className="nav-code">{m.code}</span><span>{m.label}</span>
@@ -94,7 +99,7 @@ export function PageHeader({ title, meta, children }: { title: ReactNode; meta?:
       <div className="actions">
         <button className="btn secondary" onClick={openHelp}><Help />Help</button>
         <button className="btn secondary" onClick={() => window.print()}><Print />Print</button>
-        <button className="btn secondary icon no-print" onClick={() => openInNewWindow()} title="Open this screen in a new window" aria-label="Open this screen in a new window"><NewWindow /></button>
+        <button className="btn secondary icon no-print hide-small" onClick={() => openInNewWindow()} title="Open this screen in a new window" aria-label="Open this screen in a new window"><NewWindow /></button>
         {children}
       </div>
     </div>

@@ -4,6 +4,7 @@ import type { Role, Subsystem, User } from '../data/types';
 import { Shell, PageHeader, useToast } from '../components/Shell';
 import { Banner, Chip, Empty, Stamp } from '../components/ui';
 import { Plus, Search, X } from '../components/icons';
+import { useProgressive } from '../components/progressive';
 import { formatDateTime } from '../lib/format';
 import { wildcardMatch } from '../lib/wildcard';
 import { ALLOWED_DOMAINS, STUDENT_ACCESS } from '../lib/auth';
@@ -26,6 +27,7 @@ export default function AuthorizedUsers() {
   const [mode, setMode] = useState<{ kind: 'edit'; id: string } | { kind: 'add' } | null>(null);
 
   const users = useMemo(() => db.users.filter((u) => (!area || u.access.includes(area as Subsystem)) && (wildcardMatch(q, u.name) || wildcardMatch(q, u.id) || wildcardMatch(q, u.email))), [db.users, q, area]);
+  const page = useProgressive(users, `${q}|${area}`);
   const target = mode?.kind === 'edit' ? db.users.find((u) => u.id === mode.id) : undefined;
   const lastChange = [...db.transactions].reverse().find((t) => t.subsystem === 'FRAMEWORK' && /^(Updated|Added|Reset|Initialized)/.test(t.text));
   const shared = storeMode === 'shared';
@@ -63,9 +65,9 @@ export default function AuthorizedUsers() {
         <div className="rows">
           <div className="row head" style={{ gridTemplateColumns: COLS }}><span>Name · email</span><span>Emp / student #</span><span>Job title</span><span>Access areas</span><span></span></div>
           {users.length === 0 && <Empty>No users match.</Empty>}
-          {users.map((u) => (
+          {page.visible.map((u) => (
             // The printed report covers the whole system or one subsystem (FW report); rows outside the chosen scope are left off the printout.
-            <div key={u.id} className={`row${target?.id === u.id ? ' selected' : ''}${scope !== 'all' && !u.access.includes(scope) ? ' no-print' : ''}`} style={{ gridTemplateColumns: COLS }}>
+            <div key={u.id} className={`row lead-first${target?.id === u.id ? ' selected' : ''}${scope !== 'all' && !u.access.includes(scope) ? ' no-print' : ''}`} style={{ gridTemplateColumns: COLS }}>
               <div><div className="title">{u.name}</div><div className="detail">{u.email} · {u.lastSignIn ? `last sign-in ${formatDateTime(u.lastSignIn)}` : 'never signed in'}</div></div>
               <span className="sub">{u.id}{u.role === 'student' && <><br /><span className="xs">Student</span></>}</span>
               <span>{u.jobTitle}</span>
@@ -73,6 +75,7 @@ export default function AuthorizedUsers() {
               <button className="btn secondary sm no-print" onClick={() => setMode({ kind: 'edit', id: u.id })}>Manage user</button>
             </div>
           ))}
+          {page.more}
         </div>
         <div className="stamp no-print" style={{ gap: 10 }}>
           <span>Showing {users.length} of {db.users.length}</span>
