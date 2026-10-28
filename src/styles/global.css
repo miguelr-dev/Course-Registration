@@ -160,6 +160,7 @@ textarea.input { height: auto; min-height: 72px; padding: 10px 12px; resize: ver
 
 /* Tabs */
 .tabs { display: flex; gap: 24px; padding: 0 20px; border-bottom: 1px solid var(--border); }
+.page-tabs { padding: 0; margin-top: -8px; }
 .tab { padding: 12px 0; font-weight: 500; color: var(--muted); border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; }
 .tab:hover { color: var(--text); }
 .tab.active { color: var(--primary-text); border-bottom-color: var(--primary); }
@@ -198,6 +199,31 @@ textarea.input { height: auto; min-height: 72px; padding: 10px 12px; resize: ver
 /* Login */
 .login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
 .login .card { padding: 28px; gap: 18px; }
+
+/* Value list picker (F4 / Alt+↓) and the administrator settings tabs */
+.vl-scrim { position: fixed; inset: 0; z-index: 60; }
+.vl-menu { position: fixed; z-index: 61; max-height: 240px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18); padding: 4px; outline: none; }
+.vl-head { padding: 6px 10px; font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--row-border); margin-bottom: 4px; }
+.vl-option { padding: 7px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+.vl-option.active, .vl-option:hover { background: var(--primary-bg); color: var(--primary-text); }
+.settings-grid { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 20px; align-items: start; }
+.settings-list { padding: 6px; gap: 2px; }
+.settings-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; background: none; border: 0; border-radius: 6px; padding: 9px 12px; font: inherit; color: var(--text); cursor: pointer; }
+.settings-item:hover { background: var(--bg); }
+.settings-item.active { background: var(--primary-bg); color: var(--primary-text); }
+.value-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); }
+.value-list li { display: flex; align-items: center; gap: 4px; padding: 6px 8px 6px 14px; border-bottom: 1px solid var(--row-border); font-size: 13px; }
+.value-list li:last-child { border-bottom: 0; }
+.help-field-row { display: grid; grid-template-columns: 180px minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+@media (max-width: 900px) {
+  .settings-grid { grid-template-columns: 1fr; }
+  .settings-list { flex-direction: row; overflow-x: auto; }
+  .settings-item { width: auto; flex-shrink: 0; }
+}
+@media (max-width: 640px) {
+  .help-field-row { grid-template-columns: 1fr auto; }
+  .help-field-row > textarea { grid-column: 1 / -1; grid-row: 2; }
+}
 
 /* Report viewer: an on-screen preview of the printed report (GEN-18) */
 .report-overlay { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; flex-direction: column; overflow-y: auto; }

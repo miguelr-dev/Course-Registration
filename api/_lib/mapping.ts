@@ -108,7 +108,8 @@ export function docToTables(d: Db): Record<string, Row[]> {
   for (const g of d.gradeNotes) t.grade_notes.push({ schedule_no: g.scheduleNo, at: g.at, by: g.by, text: g.text });
   for (const x of d.transactions) t.transactions.push({ at: x.at, by: x.by, subsystem: x.subsystem, text: x.text });
   for (const [field, values] of Object.entries(d.valueLists ?? {})) values.forEach((value, position) => t.value_lists.push({ field, value, position }));
-  for (const [key, h] of Object.entries(d.helpTopics ?? {})) t.help_topics.push({ key, title: h.title, summary: h.summary, fields: JSON.stringify(h.fields) });
+  // fields holds the field notes; an edited topic also records who edited it and when, in the same JSON column.
+  for (const [key, h] of Object.entries(d.helpTopics ?? {})) t.help_topics.push({ key, title: h.title, summary: h.summary, fields: JSON.stringify(h.editedAt ? { fields: h.fields, editedBy: h.editedBy, editedAt: h.editedAt } : h.fields) });
   return t;
 }
 
@@ -140,7 +141,10 @@ export function tablesToDoc(t: Record<string, Row[]>): Db {
   const valueLists: Record<string, string[]> = {};
   for (const r of rows('value_lists')) (valueLists[S(r.field)] ??= []).push(S(r.value));
   const helpTopics: Record<string, HelpTopic> = {};
-  for (const r of rows('help_topics')) helpTopics[S(r.key)] = { title: S(r.title), summary: S(r.summary), fields: (typeof r.fields === 'string' ? JSON.parse(r.fields) : r.fields) as [string, string][] };
+  for (const r of rows('help_topics')) {
+    const raw = (typeof r.fields === 'string' ? JSON.parse(r.fields) : r.fields) as [string, string][] | { fields: [string, string][]; editedBy?: string; editedAt?: string };
+    helpTopics[S(r.key)] = Array.isArray(raw) ? { title: S(r.title), summary: S(r.summary), fields: raw } : { title: S(r.title), summary: S(r.summary), ...raw };
+  }
 
   return {
     term: term ? S(term.id) : '',

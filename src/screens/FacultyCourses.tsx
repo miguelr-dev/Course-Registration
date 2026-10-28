@@ -195,6 +195,10 @@ function CoursePanel({ db, initial, originalId, onClose, onSave }: {
   );
 }
 
+/** Value lists offered in faculty fields (GEN-12): suggestions while typing, the full list on F4 or Alt+↓. */
+const LISTS: Partial<Record<string, string>> = { positionTitle: 'positionTitles', office: 'locations' };
+const valueList = (key?: string) => (key ? { list: `vl-${key}`, 'data-list': key, title: 'Press F4 or Alt+↓ for the list of values' } : {});
+
 /** Add or edit a faculty member and the courses they are qualified to teach (FCI-01, FCI-02). Cancel and restore or Esc discards the draft (GEN-33, GEN-34). */
 function FacultyPanel({ db, initial, originalId, onClose, onSave }: {
   db: Db; initial: FacultyEntry; originalId: string | null; onClose(): void; onSave(e: FacultyEntry): { ok: true } | ({ ok: false } & FacultyIssue);
@@ -210,7 +214,7 @@ function FacultyPanel({ db, initial, originalId, onClose, onSave }: {
   const cls = (f: FacultyField) => `input${err?.field === f ? ' error' : ''}`;
   const text = (k: 'id' | 'name' | 'positionTitle' | 'officePhone' | 'office' | 'officeHours' | 'email', label: string, required: boolean, placeholder: string, disabled = false) => (
     <div className="field"><label className="label" htmlFor={`f-${k}`}>{label} {required && <span className="req">*</span>}</label>
-      <input id={`f-${k}`} className={cls(k)} value={draft[k]} disabled={disabled} placeholder={placeholder} onChange={(e) => set(k, e.target.value)} /></div>
+      <input id={`f-${k}`} className={cls(k)} value={draft[k]} disabled={disabled} placeholder={placeholder} onChange={(e) => set(k, e.target.value)} {...valueList(LISTS[k])} /></div>
   );
   const teaching = new Set(originalId ? db.offerings.filter((o) => o.instructorId === originalId && o.term === db.term).map((o) => o.courseId) : []);
   const shown = db.courses.filter((c) => courses.includes(c.id) || wildcardMatch(courseFilter, c.id) || wildcardMatch(courseFilter, c.title));

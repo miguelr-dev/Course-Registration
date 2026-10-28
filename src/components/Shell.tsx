@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
 import { RoleSwitcher, ViewingBanner } from './RoleSwitcher';
+import { ValueListPicker } from './ValueListPicker';
 import { useStore } from '../data/store';
 import { MODULES } from '../modules';
 import { FloatingWindow, openInNewWindow } from './FloatingWindow';
@@ -31,7 +32,9 @@ export function Shell({ children, panel, helpKey, screen }: { children: ReactNod
   }, [toast]);
 
   const items = MODULES.filter((m) => user?.access.includes(m.code));
-  const topic = db.helpTopics?.[helpKey] ?? HELP[helpKey];
+  // Built-in help, unless an administrator edited this screen's topic (older stored copies without an edit stamp are ignored).
+  const edited = db.helpTopics?.[helpKey];
+  const topic = edited?.editedAt ? edited : HELP[helpKey];
 
   return (
     <ShellContext.Provider value={{ toast: setToast }}>
@@ -76,11 +79,13 @@ export function Shell({ children, panel, helpKey, screen }: { children: ReactNod
                 <h3>Fields on this screen</h3>
                 <dl>{topic.fields.map(([f, d]) => <><dt key={`${f}-t`}>{f}</dt><dd key={`${f}-d`}>{d}</dd></>)}</dl>
                 <h3>Standard controls</h3>
-                <p>Help and Print are on every screen. You can cancel any action before you complete it: choose Cancel and restore, close the panel, or press Esc. Every entry you made during that action is put back to how it was before you started, and nothing is recorded. Every completed action is labeled with your name, the date and the time.</p>
+                <p>Help and Print are on every screen. You can cancel any action before you complete it: choose Cancel and restore, close the panel, or press Esc. Every entry you made during that action is put back to how it was before you started, and nothing is recorded. In fields with a list of values (job title, building, university, semester…), press F4 or Alt+↓ to pick from the list. Every completed action is labeled with your name, the date and the time.</p>
+                {user?.access.includes('USERS') && <p className="no-print"><Link to={`/users?tab=help&screen=${helpKey}`} onClick={() => setHelp(false)}>Edit this help</Link> · administrators can change the text shown here.</p>}
               </div>
           </FloatingWindow>
         )}
         {toast && <div className="toast" role="status">{toast}</div>}
+        <ValueListPicker />
       </div>
     </ShellContext.Provider>
   );

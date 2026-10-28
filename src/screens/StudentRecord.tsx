@@ -11,9 +11,10 @@ import { formatDate, formatDateTime, formatTimeRange, shortName } from '../lib/f
 import { wildcardMatch } from '../lib/wildcard';
 import { fullName } from '../lib/names';
 import { isMinor, LABELS, missingKeyInfo, selfEditableFields, type StudentInfo } from '../lib/student';
-import { COMPLETION_GRADES, historyKey, type HistoryField, type HistoryIssue, type HistoryKind } from '../lib/courseHistory';
+import { historyKey, type HistoryField, type HistoryIssue, type HistoryKind } from '../lib/courseHistory';
 import { useEscapeToCancel } from '../components/draft';
 import { ReportsButton } from '../components/Reports';
+import { completionGrades } from '../lib/parameters';
 import { studentRecordReport, studentScheduleReport } from '../lib/reports';
 
 const CATEGORY: Record<NoteCategory, { label: string; kind: 'ok' | 'warn' | 'drop' | 'indigo' }> = {
@@ -256,7 +257,7 @@ function HistoryPanel({ db, kind, initial, isNew, onClose, onSave }: {
       <div className="panel-head"><h2>{isNew ? (transfer ? 'Add transfer course' : 'Add completed course') : `Correct ${initial.courseId}`}</h2><button className="btn ghost sm icon" onClick={onClose} aria-label="Close"><X /></button></div>
       <form className="panel-body" onSubmit={submit} noValidate id="historyform">
         {transfer && <>
-          <div className="field"><label className="label" htmlFor="h-uni">University <span className="req">*</span></label><input id="h-uni" className={cls('university')} value={draft.university} placeholder="e.g. Santa Monica College" onChange={(e) => set('university', e.target.value)} /></div>
+          <div className="field"><label className="label" htmlFor="h-uni">University <span className="req">*</span></label><input id="h-uni" list="vl-universities" data-list="universities" title="Press F4 or Alt+↓ for the list of values" className={cls('university')} value={draft.university} placeholder="e.g. Santa Monica College" onChange={(e) => set('university', e.target.value)} /></div>
           <div className="field"><label className="label" htmlFor="h-loc">Location <span className="req">*</span></label><input id="h-loc" className={cls('location')} value={draft.location} placeholder="e.g. Santa Monica, CA" onChange={(e) => set('location', e.target.value)} /></div>
         </>}
         <div className="field"><label className="label" htmlFor="h-id">{transfer ? 'Course ID at that university' : 'Course ID'} <span className="req">*</span></label>
@@ -264,10 +265,10 @@ function HistoryPanel({ db, kind, initial, isNew, onClose, onSave }: {
           {!transfer && <datalist id="history-catalog">{db.courses.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}</datalist>}</div>
         <div className="field"><label className="label" htmlFor="h-title">Course title <span className="req">*</span></label><input id="h-title" className={cls('title')} value={draft.title} onChange={(e) => set('title', e.target.value)} /></div>
         <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: 12 }}>
-          <div className="field"><label className="label" htmlFor="h-term">Semester <span className="req">*</span></label><input id="h-term" className={cls('term')} value={draft.term} placeholder="Fall 2025" onChange={(e) => set('term', e.target.value)} /></div>
+          <div className="field"><label className="label" htmlFor="h-term">Semester <span className="req">*</span></label><input id="h-term" list="vl-semesters" data-list="semesters" title="Press F4 or Alt+↓ for the list of values" className={cls('term')} value={draft.term} placeholder="Fall 2025" onChange={(e) => set('term', e.target.value)} /></div>
           <div className="field"><label className="label" htmlFor="h-units">Units <span className="req">*</span></label><input id="h-units" type="number" min={0} max={12} step={1} className={cls('units')} value={Number.isNaN(draft.units) ? '' : draft.units} onChange={(e) => set('units', e.target.value === '' ? NaN : Number(e.target.value))} /></div>
           <div className="field"><label className="label" htmlFor="h-grade">Grade <span className="req">*</span></label>
-            <select id="h-grade" className={cls('grade')} value={draft.grade} onChange={(e) => set('grade', e.target.value)}><option value="">—</option>{COMPLETION_GRADES.map((g) => <option key={g} value={g}>{g}</option>)}</select></div>
+            <select id="h-grade" className={cls('grade')} value={draft.grade} onChange={(e) => set('grade', e.target.value)}><option value="">—</option>{completionGrades(db).map((g) => <option key={g} value={g}>{g}</option>)}</select></div>
         </div>
         {transfer && <div className="field"><label className="label" htmlFor="h-eq">Equivalent course here</label>
           <select id="h-eq" className={cls('equivalentCourseId')} value={draft.equivalentCourseId} onChange={(e) => set('equivalentCourseId', e.target.value)}><option value="">None</option>{db.courses.map((c) => <option key={c.id} value={c.id}>{c.id} · {c.title}</option>)}</select></div>}

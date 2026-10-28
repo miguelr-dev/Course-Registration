@@ -3,10 +3,11 @@ import { useStore } from '../data/store';
 import { Shell, PageHeader, Dot, useToast } from '../components/Shell';
 import { Banner, Chip, Empty, PrereqChip, SeatsChip, Stamp, StatusChip } from '../components/ui';
 import { keyInfoBlock } from '../lib/student';
+import { maxUnits } from '../lib/parameters';
 import { ReportsButton } from '../components/Reports';
 import { studentScheduleReport } from '../lib/reports';
 import { X } from '../components/icons';
-import { courseOf, currentRegistrations, eligibleMajorOfferings, MAX_UNITS, offeringOf, seatsOpen, unitsRegistered } from '../lib/rules';
+import { courseOf, currentRegistrations, eligibleMajorOfferings, offeringOf, seatsOpen, unitsRegistered } from '../lib/rules';
 import { formatDate, formatTimeRange, shortName } from '../lib/format';
 
 export default function Dashboard() {
@@ -45,7 +46,7 @@ export default function Dashboard() {
 
       <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: '4fr 8fr', gap: 24, alignItems: 'start' }}>
         <div className="card">
-          <div className="card-head"><h2>My schedule</h2><span className="sub">{regs.length} {regs.length === 1 ? 'course' : 'courses'} · {units} of {MAX_UNITS} units</span></div>
+          <div className="card-head"><h2>My schedule</h2><span className="sub">{regs.length} {regs.length === 1 ? 'course' : 'courses'} · {units} of {maxUnits(db)} units</span></div>
           <div className="rows">
             {regs.length === 0 && <Empty>No courses yet. Search courses to register.</Empty>}
             {regs.map((r) => {

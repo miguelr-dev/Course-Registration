@@ -4,10 +4,11 @@ import type { Offering, RegistrationType } from '../data/types';
 import { Shell, PageHeader, Dot, useToast } from '../components/Shell';
 import { Banner, Chip, Empty, PrereqChip, SeatsChip, Stamp } from '../components/ui';
 import { Check, ChevronDown, ChevronUp, Search, X } from '../components/icons';
-import { conflicts, courseOf, currentRegistrations, MAX_UNITS, prereqStatus, registrationIssues, seatsOpen, unitsRegistered } from '../lib/rules';
+import { conflicts, courseOf, currentRegistrations, prereqStatus, registrationIssues, seatsOpen, unitsRegistered } from '../lib/rules';
 import { formatDate, formatTimeRange, shortName } from '../lib/format';
 import { wildcardMatch } from '../lib/wildcard';
 import { useEscapeToCancel } from '../components/draft';
+import { maxUnits } from '../lib/parameters';
 import { useProgressive } from '../components/progressive';
 import { ReportsButton } from '../components/Reports';
 import { departmentChoices, departmentOfferingsReport, seatsAvailableReport, studentScheduleReport } from '../lib/reports';
@@ -73,7 +74,7 @@ export default function CourseSearch() {
           </select>
         </div>
         <div className="kv">
-          <span className="k">Units after adding</span><span>{unitsRegistered(db, student.id) + selCourse.units} of {MAX_UNITS}</span>
+          <span className="k">Units after adding</span><span>{unitsRegistered(db, student.id) + selCourse.units} of {maxUnits(db)}</span>
           <span className="k">Schedule conflicts</span><span>{currentRegistrations(db, student.id).some((r) => { const o = db.offerings.find((x) => x.scheduleNo === r.scheduleNo); return o && conflicts(o, sel); }) ? <Chip kind="drop"><X />Conflict</Chip> : <Chip kind="ok"><Check />None</Chip>}</span>
           <span className="k">Seats</span><span>{seatsOpen(db, sel)} of {sel.capacity} open</span>
         </div>

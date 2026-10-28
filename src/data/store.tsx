@@ -3,8 +3,9 @@ import { useAuth, useClerk, useSession, useUser } from '@clerk/react';
 import { createSeed } from './seed';
 import { canSwitchRoles, effectiveUser, type ViewAs } from '../lib/viewAs';
 import { SyncClient } from './sync';
-import type { CompletedCourse, Course, Db, NoteCategory, OutlineStatus, RegistrationType, Student, Subsystem, TransferCourse, User } from './types';
-import { applyCourseSave, type CourseIssue } from '../lib/catalog';
+import type { CompletedCourse, Course, Db, HelpTopic, NoteCategory, OutlineStatus, RegistrationType, Student, Subsystem, TransferCourse, User } from './types';
+import { applyCourseSave, canMaintainCatalog, type CourseIssue } from '../lib/catalog';
+import { normalizeList, valueListIssue } from '../lib/parameters';
 import { applyFacultySave, type FacultyEntry, type FacultyIssue } from '../lib/faculty';
 import { nowIso } from '../lib/format';
 import { registrationIssues, type EligibilityIssue } from '../lib/rules';
@@ -75,6 +76,8 @@ interface StoreApi {
   addGradeNote(scheduleNo: string, text: string): void;
   addUser(u: Omit<User, 'lastSignIn' | 'clerkUserId'>): { ok: true } | { ok: false; reason: string; requirement: string };
   updateUserAccess(userId: string, access: Subsystem[]): void;
+  saveValueList(key: string, values: string[]): { ok: true } | { ok: false; reason: string; requirement: string };
+  saveHelpTopic(key: string, topic: HelpTopic | null): { ok: true } | { ok: false; reason: string; requirement: string };
   updateUser(userId: string, changes: Pick<User, 'name' | 'jobTitle' | 'role' | 'access'>): { ok: true } | { ok: false; reason: string; requirement: string };
   setPassword(userId: string, password: string): Promise<{ ok: true; created: boolean } | { ok: false; reason: string }>;
 }
@@ -439,6 +442,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return { ok: true };
       }
       commit((d) => stamp({ ...d, users: [...d.users, { ...u, email }] }, 'FRAMEWORK', `Added user ${u.name} (${u.id}) for ${email}`));
+      return { ok: true };
+    },
+
+    saveValueList(key, values) {
+      // GEN-11, GEN-12: user-maintained parameters and value lists, changed only by administrators or the registrar (the server enforces the same).
+      if (!canMaintainCatalog(user)) return { ok: false, reason: 'Changing value lists requires the registrar or a system administrator.', requirement: 'Ask an administrator to make this change.' };
+      const issue = valueListIssue(key, values);
+      if (issue) return { ok: false, ...issue };
+      const next = normalizeList(key, values);
+      commit((d) => stamp({ ...d, valueLists: { ...d.valueLists, [key]: next } }, 'FRAMEWORK', `Updated value list ${key}: ${next.join(', ')}`.slice(0, 200)));
+      return { ok: true };
+    },
+
+    saveHelpTopic(key, topic) {
+      // On-line help is user-updatable under security control; null restores the built-in text.
+      if (!canMaintainCatalog(user)) return { ok: false, reason: 'Editing help requires the registrar or a system administrator.', requirement: 'Ask an administrator to make this change.' };
+      if (topic && (!topic.title.trim() || !topic.summary.trim())) return { ok: false, reason: 'Help needs a title and a summary.', requirement: 'Fill in both before saving.' };
+      if (topic && topic.fields.some(([f, d]) => !f.trim() || !d.trim())) return { ok: false, reason: 'Every field note needs a field name and a description.', requirement: 'Fill in or remove the empty rows.' };
+      commit((d) => {
+        const helpTopics = { ...d.helpTopics };
+        if (topic) helpTopics[key] = { title: topic.title.trim(), summary: topic.summary.trim(), fields: topic.fields.map(([f, x]) => [f.trim(), x.trim()]), editedBy: user?.name ?? 'System', editedAt: nowIso() };
+        else delete helpTopics[key];
+        return stamp({ ...d, helpTopics }, 'FRAMEWORK', `${topic ? 'Updated' : 'Restored default'} help for ${key}`);
+      });
       return { ok: true };
     },
 

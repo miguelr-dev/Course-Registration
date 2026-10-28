@@ -4,7 +4,8 @@ import { useStore } from '../data/store';
 import { Shell, PageHeader, Dot, useToast } from '../components/Shell';
 import { Banner, Empty } from '../components/ui';
 import { Clock, Note, Search } from '../components/icons';
-import { courseOf, gradeStats, LETTER_GRADES, letterFor } from '../lib/rules';
+import { courseOf, gradeStats, letterFor } from '../lib/rules';
+import { letterGrades } from '../lib/parameters';
 import { formatDate, formatDateTime, formatTimeRange } from '../lib/format';
 import { fillerName } from '../data/seed';
 import { wildcardMatch } from '../lib/wildcard';
@@ -76,7 +77,7 @@ export default function GradeEntry() {
   function optionsFor(type: string) {
     if (type === 'audit') return ['AU'];
     if (type === 'crnc') return ['CR', 'NC', 'I'];
-    return LETTER_GRADES;
+    return letterGrades(db); // user-maintained grade list (GEN-11)
   }
 
   return (
