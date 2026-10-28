@@ -5,6 +5,8 @@ import { Shell, PageHeader, useToast } from '../components/Shell';
 import { Banner, Chip, Empty, Stamp } from '../components/ui';
 import { Plus, Search, X } from '../components/icons';
 import { useProgressive } from '../components/progressive';
+import { ReportsButton } from '../components/Reports';
+import { authorizedUsersReport } from '../lib/reports';
 import { formatDateTime } from '../lib/format';
 import { wildcardMatch } from '../lib/wildcard';
 import { ALLOWED_DOMAINS, STUDENT_ACCESS } from '../lib/auth';
@@ -23,7 +25,6 @@ export default function AuthorizedUsers() {
   const toast = useToast();
   const [q, setQ] = useState('');
   const [area, setArea] = useState('');
-  const [scope, setScope] = useState<'all' | Subsystem>('all');
   const [mode, setMode] = useState<{ kind: 'edit'; id: string } | { kind: 'add' } | null>(null);
 
   const users = useMemo(() => db.users.filter((u) => (!area || u.access.includes(area as Subsystem)) && (wildcardMatch(q, u.name) || wildcardMatch(q, u.id) || wildcardMatch(q, u.email))), [db.users, q, area]);
@@ -50,9 +51,9 @@ export default function AuthorizedUsers() {
 
   return (
     <Shell helpKey="users" screen="Framework · Authorized users" panel={panel}>
-      <PageHeader title="Authorized users" meta={<span>{db.users.length} users · passwords are kept by the sign-in service and are never stored, shown or printed here{scope !== 'all' ? ` · report: ${scope} only` : ''}</span>}>
+      <PageHeader title="Authorized users" meta={<span>{db.users.length} users · passwords are kept by the sign-in service and are never stored, shown or printed here</span>}>
         <button className="btn secondary no-print" onClick={resetDemo} title={shared ? 'Restores the sample university for everyone; your admin account is kept' : 'Restores the sample university in this browser'}>Reset sample data</button>
-        <button className="btn secondary" onClick={() => window.print()}>Print user report</button>
+        <ReportsButton label="Print user report" reports={[{ id: 'users', label: 'Authorized users', params: [{ key: 'area', label: 'Scope', options: [['', 'Whole system'], ...AREAS.map((a): [string, string] => [a, `${a} subsystem`])] }], build: (v) => authorizedUsersReport(db, (v.area || null) as Subsystem | null) }]} />
         <button className="btn" onClick={() => setMode({ kind: 'add' })}><Plus />Add user</button>
       </PageHeader>
 
@@ -66,8 +67,7 @@ export default function AuthorizedUsers() {
           <div className="row head" style={{ gridTemplateColumns: COLS }}><span>Name · email</span><span>Emp / student #</span><span>Job title</span><span>Access areas</span><span></span></div>
           {users.length === 0 && <Empty>No users match.</Empty>}
           {page.visible.map((u) => (
-            // The printed report covers the whole system or one subsystem (FW report); rows outside the chosen scope are left off the printout.
-            <div key={u.id} className={`row lead-first${target?.id === u.id ? ' selected' : ''}${scope !== 'all' && !u.access.includes(scope) ? ' no-print' : ''}`} style={{ gridTemplateColumns: COLS }}>
+            <div key={u.id} className={`row lead-first${target?.id === u.id ? ' selected' : ''}`} style={{ gridTemplateColumns: COLS }}>
               <div><div className="title">{u.name}</div><div className="detail">{u.email} · {u.lastSignIn ? `last sign-in ${formatDateTime(u.lastSignIn)}` : 'never signed in'}</div></div>
               <span className="sub">{u.id}{u.role === 'student' && <><br /><span className="xs">Student</span></>}</span>
               <span>{u.jobTitle}</span>
@@ -77,11 +77,7 @@ export default function AuthorizedUsers() {
           ))}
           {page.more}
         </div>
-        <div className="stamp no-print" style={{ gap: 10 }}>
-          <span>Showing {users.length} of {db.users.length}</span>
-          <span className="right">Report scope:</span>
-          <select className="input sm" style={{ width: 160 }} value={scope} onChange={(e) => setScope(e.target.value as typeof scope)} aria-label="Report scope"><option value="all">Whole system</option>{AREAS.map((a) => <option key={a} value={a}>{a} only</option>)}</select>
-        </div>
+        <div className="stamp no-print"><span>{users.length} of {db.users.length} users match · Print user report covers the whole system or one subsystem</span></div>
       </div>
     </Shell>
   );

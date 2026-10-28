@@ -3,6 +3,8 @@ import { useStore } from '../data/store';
 import { Shell, PageHeader, Dot, useToast } from '../components/Shell';
 import { Banner, Chip, Empty, PrereqChip, SeatsChip, Stamp, StatusChip } from '../components/ui';
 import { keyInfoBlock } from '../lib/student';
+import { ReportsButton } from '../components/Reports';
+import { studentScheduleReport } from '../lib/reports';
 import { X } from '../components/icons';
 import { courseOf, currentRegistrations, eligibleMajorOfferings, MAX_UNITS, offeringOf, seatsOpen, unitsRegistered } from '../lib/rules';
 import { formatDate, formatTimeRange, shortName } from '../lib/format';
@@ -35,6 +37,7 @@ export default function Dashboard() {
         title={`Welcome back, ${student.firstName} ${student.lastName}`}
         meta={<><span>ID {student.id}</span><Dot /><span>{major?.title}</span><Dot /><span>{db.term}</span></>}
       >
+        <ReportsButton label="Print schedule" reports={[{ id: 'schedule', label: 'My schedule', build: () => studentScheduleReport(db, student.id) }]} />
         <Link to="/search" className="btn">Search courses</Link>
       </PageHeader>
 

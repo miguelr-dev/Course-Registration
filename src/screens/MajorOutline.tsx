@@ -9,6 +9,8 @@ import { completedCourseIds, courseOf, currentRegistrations, offeringOf } from '
 import { formatDate, formatDateTime, shortName } from '../lib/format';
 import { useEscapeToCancel } from '../components/draft';
 import { keyInfoBlock } from '../lib/student';
+import { ReportsButton } from '../components/Reports';
+import { completedRequiredReport, majorChoices, majorRequirementsReport, outlineHistoryReport, outlineStatusReport } from '../lib/reports';
 
 const COLS_EDIT = '84px 1fr 100px 100px 140px 120px';
 const COLS_VIEW = '84px 1fr 100px 100px 140px';
@@ -70,6 +72,13 @@ export default function MajorOutline() {
             {db.students.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName} · {s.id}</option>)}
           </select>
         )}
+        {/* MAJOR reports: required courses for any major (all users); the other three are limited to this student and their advisors by the screen itself */}
+        <ReportsButton reports={[
+          { id: 'status', label: 'Status against approved outline', build: () => outlineStatusReport(db, student.id) },
+          { id: 'completed', label: 'Completed required courses', build: () => completedRequiredReport(db, student.id) },
+          { id: 'history', label: 'Outline change history', build: () => outlineHistoryReport(db, student.id) },
+          { id: 'major', label: 'Required courses for a major', params: [{ key: 'major', label: 'Major', options: majorChoices(db, major.id) }], build: (v) => majorRequirementsReport(db, v.major) },
+        ]} />
         {canEdit && (
           <div className="cluster no-print">
             <select className="input" style={{ width: 220 }} value={adding} onChange={(e) => setAdding(e.target.value)} aria-label="Course to add">

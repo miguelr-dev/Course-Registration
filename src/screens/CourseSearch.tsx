@@ -9,6 +9,8 @@ import { formatDate, formatTimeRange, shortName } from '../lib/format';
 import { wildcardMatch } from '../lib/wildcard';
 import { useEscapeToCancel } from '../components/draft';
 import { useProgressive } from '../components/progressive';
+import { ReportsButton } from '../components/Reports';
+import { departmentChoices, departmentOfferingsReport, seatsAvailableReport, studentScheduleReport } from '../lib/reports';
 
 const COLS = '84px 1fr 44px 130px 112px 92px'; // seats fits "3 seats left" and "120 of 120" chips, which never wrap
 
@@ -93,7 +95,13 @@ export default function CourseSearch() {
 
   return (
     <Shell helpKey="search" screen="REG · Course search & registration" panel={panel}>
-      <PageHeader title="Search courses" meta={<><span>{db.term}</span><Dot /><span>Registration open until {formatDate(db.registrationCloses)}</span></>} />
+      <PageHeader title="Search courses" meta={<><span>{db.term}</span><Dot /><span>Registration open until {formatDate(db.registrationCloses)}</span></>}>
+        <ReportsButton reports={[
+          ...(student ? [{ id: 'schedule', label: 'My schedule', build: () => studentScheduleReport(db, student.id) }] : []),
+          { id: 'offered', label: 'Courses offered by a department', params: [{ key: 'dept', label: 'Department', options: dept ? [...departmentChoices(db).filter(([id]) => id === dept), ...departmentChoices(db).filter(([id]) => id !== dept)] : departmentChoices(db) }], build: (v) => departmentOfferingsReport(db, v.dept) },
+          { id: 'seats', label: 'Courses with seats available', params: [{ key: 'dept', label: 'Department', options: departmentChoices(db, 'All departments') }], build: (v) => seatsAvailableReport(db, v.dept || null) },
+        ]} />
+      </PageHeader>
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div className="field grow" style={{ minWidth: 200 }}>
           <label className="label" htmlFor="q">Course ID or title</label>

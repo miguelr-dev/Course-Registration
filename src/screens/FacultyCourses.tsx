@@ -5,6 +5,8 @@ import { Banner, Empty } from '../components/ui';
 import { Print, Search, X } from '../components/icons';
 import { useEscapeToCancel, useWarnBeforeLeaving } from '../components/draft';
 import { useProgressive } from '../components/progressive';
+import { ReportsButton } from '../components/Reports';
+import { courseListReport, departmentChoices, facultyListReport, majorChoices, majorRequirementsReport } from '../lib/reports';
 import type { Course, Db, Faculty } from '../data/types';
 import { canMaintainCatalog, type CourseField, type CourseIssue } from '../lib/catalog';
 import type { FacultyEntry, FacultyField, FacultyIssue } from '../lib/faculty';
@@ -50,7 +52,11 @@ export default function FacultyCourses() {
       <PageHeader title="Faculty and courses" meta={<span>Query by faculty ID, faculty name, course ID or course title · use * as a wildcard</span>}>
         {canMaintain && <button className="btn secondary no-print" onClick={() => { setEditing(null); setEditingFaculty({ entry: { faculty: { id: '', name: '', positionTitle: '', officePhone: '', office: '', officeHours: '', deptId: dept || db.departments[0]?.id || '', teachesIn: [], email: '' }, courses: [] }, originalId: null }); }}>Add faculty</button>}
         {canMaintain && <button className="btn no-print" onClick={() => { setEditingFaculty(null); setEditing({ course: { id: '', title: '', description: '', units: 3, prereqs: [], deptId: dept || db.departments[0]?.id || '', level: 'lower', qualifiedFaculty: [] }, originalId: null }); }}>Add course</button>}
-        <button className="btn secondary" onClick={() => toast('Department report: preview opens in the print dialog')}>Department report</button>
+        <ReportsButton reports={[
+          { id: 'faculty', label: 'Faculty list', params: [{ key: 'dept', label: 'Department', options: departmentChoices(db, 'University, by department') }], build: (v) => facultyListReport(db, v.dept || null) },
+          { id: 'courses', label: 'Course list', params: [{ key: 'dept', label: 'Department', options: departmentChoices(db, 'University, by department') }], build: (v) => courseListReport(db, v.dept || null) },
+          { id: 'major', label: 'Required courses for a major', params: [{ key: 'major', label: 'Major', options: majorChoices(db) }], build: (v) => majorRequirementsReport(db, v.major) },
+        ]} />
       </PageHeader>
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>

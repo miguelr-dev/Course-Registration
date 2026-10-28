@@ -10,6 +10,8 @@ import { fillerName } from '../data/seed';
 import { wildcardMatch } from '../lib/wildcard';
 import { useEscapeToCancel, useWarnBeforeLeaving } from '../components/draft';
 import { useProgressive } from '../components/progressive';
+import { ReportsButton } from '../components/Reports';
+import { departmentChoices, gradeStatisticsReport } from '../lib/reports';
 
 const COLS = '1.1fr 90px 90px 110px 1.7fr';
 
@@ -88,6 +90,7 @@ export default function GradeEntry() {
             {mine.map((o) => <option key={o.scheduleNo} value={o.scheduleNo}>{o.courseId} · {o.scheduleNo}</option>)}
           </select>
         )}
+        <ReportsButton label="Statistics reports" reports={[{ id: 'stats', label: 'Grade statistics', params: [{ key: 'dept', label: 'Scope', options: [[course.deptId, `${db.departments.find((d) => d.id === course.deptId)?.name} Department`], ['', 'University (all departments)'], ...departmentChoices(db).filter(([id]) => id !== course.deptId).map(([id, name]): [string, string] => [id, `${name} Department`])] }], build: (v) => gradeStatisticsReport(db, v.dept || null) }]} />
         <button className="btn" onClick={() => window.print()}>Grade sheet</button>
       </PageHeader>
 
