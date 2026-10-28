@@ -21,7 +21,7 @@ const COLS = '84px 1fr 44px 130px 112px 92px'; // seats fits "3 seats left" and 
 export default function CourseSearch() {
   const { db, user, register, requestWaiver } = useStore();
   const toast = useToast();
-  const student = db.students.find((s) => s.id === user?.studentId);
+  const student = user?.role === 'student' ? db.students.find((s) => s.id === user.studentId) : undefined; // staff accounts may also own a student record; it applies only when acting as a student
   const [q, setQ] = useState('');
   const [dept, setDept] = useState('');
   const [openOnly, setOpenOnly] = useState(true);

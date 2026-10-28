@@ -15,7 +15,7 @@ import { formatDate, formatTimeRange, shortName } from '../lib/format';
 export default function Dashboard() {
   const { db, user, register, drop } = useStore();
   const toast = useToast();
-  const student = db.students.find((s) => s.id === user?.studentId);
+  const student = user?.role === 'student' ? db.students.find((s) => s.id === user.studentId) : undefined; // staff accounts may also own a student record; it applies only when acting as a student
   if (!user) return null;
   if (!student) return <Navigate to="/search" replace />;
 

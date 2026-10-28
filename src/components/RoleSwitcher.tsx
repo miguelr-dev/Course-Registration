@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../data/store';
 import { canSwitchRoles, defaultView, describeView, ROLE_ORDER, ROLE_VIEWS } from '../lib/viewAs';
 import { Check } from './icons';
+import { fullName } from '../lib/names';
 
 /** Bottom-left switcher (FW-09): administrators view SignMeUp as each user type without separate accounts. */
 export function RoleSwitcher() {
-  const { db, realUser, viewAs, setViewAs } = useStore();
+  const { db, realUser, viewAs, setViewAs, createMyStudentRecord } = useStore();
   const [open, setOpen] = useState(false);
   const nav = useNavigate();
 
@@ -21,7 +22,14 @@ export function RoleSwitcher() {
   const active = viewAs?.role ?? 'admin';
   const advisors = db.users.filter((u) => u.role === 'advisor' && u.facultyId);
 
+  const mine = realUser?.studentId && db.students.find((s) => s.id === realUser.studentId);
+  function chooseStudent(value: string) {
+    if (value !== '__mine') return choose('student', { studentId: value });
+    const id = createMyStudentRecord(); // first time: start a student record under the administrator's own ID
+    if (id) choose('student', { studentId: id });
+  }
   function choose(role: typeof active, pick?: { studentId?: string; facultyId?: string }) {
+    if (role === 'student' && !pick && mine) pick = { studentId: mine.id }; // viewing as a student defaults to yourself when you have a record
     setViewAs(role === 'admin' ? null : { ...defaultView(db, role), ...pick });
     setOpen(false);
     nav('/');
@@ -44,9 +52,10 @@ export function RoleSwitcher() {
                 {active === r && <Check />}
               </button>
               {r === 'student' && (
-                <select className="input sm" aria-label="Student to view as" value={viewAs?.role === 'student' ? viewAs.studentId : ''} onChange={(e) => choose('student', { studentId: e.target.value })}>
+                <select className="input sm" aria-label="Student to view as" value={viewAs?.role === 'student' ? viewAs.studentId : ''} onChange={(e) => chooseStudent(e.target.value)}>
                   <option value="" disabled>Choose student…</option>
-                  {db.students.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName} · {s.id}</option>)}
+                  {mine ? <option value={mine.id}>Me · {fullName(mine)} · {mine.id}</option> : <option value="__mine">Me · create my student record</option>}
+                  {db.students.filter((s) => s.id !== realUser?.studentId).map((s) => <option key={s.id} value={s.id}>{fullName(s)} · {s.id}</option>)}
                 </select>
               )}
               {r === 'faculty' && (

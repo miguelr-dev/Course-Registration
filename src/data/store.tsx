@@ -57,6 +57,7 @@ interface StoreApi {
   realUser: User | null; // always the signed-in user
   viewAs: ViewAs | null;
   setViewAs(v: ViewAs | null): void;
+  createMyStudentRecord(): string | null; // administrators: a student record under their own ID, to view the site as themselves
   session: Session;
   mode: StoreMode;
   syncError: string | null;
@@ -299,6 +300,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const next = v && v.role !== 'admin' ? v : null;
       setViewAsState(next);
       try { if (next) sessionStorage.setItem(VIEW_KEY, JSON.stringify(next)); else sessionStorage.removeItem(VIEW_KEY); } catch { /* not remembered across reloads */ }
+    },
+
+    createMyStudentRecord() {
+      if (!realUser || !canSwitchRoles(realUser)) return null;
+      const id = realUser.studentId ?? realUser.id;
+      if (realUser.studentId && db.students.some((s) => s.id === id)) return id;
+      if (db.students.some((s) => s.id === id)) return null; // that ID already belongs to someone else's record
+      commit((d) => stamp({
+        ...d,
+        users: d.users.map((u) => (u.id === realUser.id ? { ...u, studentId: id } : u)),
+        students: d.students.some((s) => s.id === id) ? d.students : [...d.students, skeletonStudent(id, realUser.name)],
+      }, 'FRAMEWORK', `Created a student record for ${realUser.name} (${id})`, realUser.name));
+      return id;
     },
 
     signOut() { try { sessionStorage.removeItem(VIEW_KEY); } catch { /* nothing stored */ } void clerk.signOut({ redirectUrl: '/login' }); },
