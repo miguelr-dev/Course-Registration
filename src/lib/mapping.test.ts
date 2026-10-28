@@ -8,6 +8,13 @@ describe('relational mapping', () => {
     const back = tablesToDoc(docToTables(seed));
     expect(back).toEqual(seed);
   });
+  it('keeps administrator help edits with their stamp, and reads older unstamped rows as plain topics', () => {
+    const seed = createSeed();
+    const edited = { title: 'Grades', summary: 'Edited summary.', fields: [['Grade', 'Pick one.']] as [string, string][], editedBy: 'Kenji Ibarra-Novak', editedAt: '2026-10-27T10:00:00' };
+    expect(tablesToDoc(docToTables({ ...seed, helpTopics: { grades: edited } })).helpTopics.grades).toEqual(edited);
+    const legacy = { ...docToTables(seed), help_topics: [{ key: 'search', title: 'Old', summary: 'Old summary.', fields: '[["Q","Old note."]]' }] };
+    expect(tablesToDoc(legacy).helpTopics.search).toEqual({ title: 'Old', summary: 'Old summary.', fields: [['Q', 'Old note.']] });
+  });
   it('covers every table in dependency order with a SELECT', () => {
     for (const spec of TABLES) {
       expect(SELECTS[spec.table]).toMatch(new RegExp(`from "${spec.table}"`));

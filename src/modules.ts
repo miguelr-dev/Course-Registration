@@ -27,11 +27,11 @@ export const MODULES: SubsystemModule[] = [
   },
   {
     code: 'REG', label: 'Registration', home: '/',
-    routes: [{ path: '/', load: () => import('./screens/Dashboard') }, { path: '/search', load: () => import('./screens/CourseSearch') }],
+    routes: [{ path: '/', load: () => import('./screens/Dashboard') }, { path: '/search', load: () => import('./screens/CourseSearch') }, { path: '/schedule', load: () => import('./screens/ClassSchedule') }],
   },
   {
     code: 'MAJOR', label: 'Major Requirements', home: '/outline',
-    routes: [{ path: '/outline', load: () => import('./screens/MajorOutline') }, { path: '/outline/:studentId', load: () => import('./screens/MajorOutline') }],
+    routes: [{ path: '/outline', load: () => import('./screens/MajorOutline') }, { path: '/outline/:studentId', load: () => import('./screens/MajorOutline') }, { path: '/majors', load: () => import('./screens/Majors') }],
   },
   {
     code: 'FCI', label: 'Faculty & Courses', home: '/faculty',

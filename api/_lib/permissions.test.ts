@@ -47,6 +47,17 @@ describe('object-based security', () => {
     expect(check(MARIA, { ...db, transactions: db.transactions.slice(1) }).ok).toBe(false);
   });
 
+  it('refuses a student registering after the deadline, but not a drop or a staff registration', () => {
+    const open = db.offerings.find((o) => !db.registrations.some((r) => r.studentId === MARIA && r.scheduleNo === o.scheduleNo))!;
+    const late = '2026-10-28';
+    const closed = { ...db, registrationCloses: '2026-09-26' };
+    const add = { ...register(MARIA, open.scheduleNo), registrationCloses: '2026-09-26' };
+    expect(checkObjectPermissions(email(MARIA), closed, add, [], late).ok).toBe(false);
+    expect(checkObjectPermissions(email(ROSA), closed, add, [], late)).toEqual({ ok: true });
+    const mine = db.registrations.find((r) => r.studentId === MARIA && !r.grade)!;
+    expect(checkObjectPermissions(email(MARIA), closed, { ...closed, registrations: closed.registrations.filter((r) => r !== mine) }, [], late)).toEqual({ ok: true });
+  });
+
   it('lets a student register and drop only for themself', () => {
     const open = db.offerings.find((o) => !db.registrations.some((r) => r.studentId === MARIA && r.scheduleNo === o.scheduleNo))!;
     expect(check(MARIA, register(MARIA, open.scheduleNo))).toEqual({ ok: true });

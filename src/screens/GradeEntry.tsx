@@ -4,12 +4,15 @@ import { useStore } from '../data/store';
 import { Shell, PageHeader, Dot, useToast } from '../components/Shell';
 import { Banner, Empty } from '../components/ui';
 import { Clock, Note, Search } from '../components/icons';
-import { courseOf, gradeStats, LETTER_GRADES, letterFor } from '../lib/rules';
+import { courseOf, gradeStats, letterFor } from '../lib/rules';
+import { letterGrades } from '../lib/parameters';
 import { formatDate, formatDateTime, formatTimeRange } from '../lib/format';
 import { fillerName } from '../data/seed';
 import { wildcardMatch } from '../lib/wildcard';
 import { useEscapeToCancel, useWarnBeforeLeaving } from '../components/draft';
 import { useProgressive } from '../components/progressive';
+import { ReportsButton } from '../components/Reports';
+import { departmentChoices, gradeStatisticsReport } from '../lib/reports';
 
 const COLS = '1.1fr 90px 90px 110px 1.7fr';
 
@@ -74,7 +77,7 @@ export default function GradeEntry() {
   function optionsFor(type: string) {
     if (type === 'audit') return ['AU'];
     if (type === 'crnc') return ['CR', 'NC', 'I'];
-    return LETTER_GRADES;
+    return letterGrades(db); // user-maintained grade list (GEN-11)
   }
 
   return (
@@ -88,6 +91,7 @@ export default function GradeEntry() {
             {mine.map((o) => <option key={o.scheduleNo} value={o.scheduleNo}>{o.courseId} · {o.scheduleNo}</option>)}
           </select>
         )}
+        <ReportsButton label="Statistics reports" reports={[{ id: 'stats', label: 'Grade statistics', params: [{ key: 'dept', label: 'Scope', options: [[course.deptId, `${db.departments.find((d) => d.id === course.deptId)?.name} Department`], ['', 'University (all departments)'], ...departmentChoices(db).filter(([id]) => id !== course.deptId).map(([id, name]): [string, string] => [id, `${name} Department`])] }], build: (v) => gradeStatisticsReport(db, v.dept || null) }]} />
         <button className="btn" onClick={() => window.print()}>Grade sheet</button>
       </PageHeader>
 

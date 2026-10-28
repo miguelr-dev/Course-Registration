@@ -134,7 +134,8 @@ export interface Outline {
   history: OutlineHistory[];
 }
 
-export interface HelpTopic { title: string; summary: string; fields: [string, string][]; }
+/** `editedBy`/`editedAt` mark a topic an administrator changed; only those override the built-in help text. */
+export interface HelpTopic { title: string; summary: string; fields: [string, string][]; editedBy?: string; editedAt?: string; }
 
 export interface GeneralGradeNote { scheduleNo: string; at: string; by: string; text: string; }
 
@@ -156,5 +157,5 @@ export interface Db {
   gradeNotes: GeneralGradeNote[];
   transactions: Transaction[];
   valueLists: Record<string, string[]>; // user-maintained allowed values per entry field (GEN-11, GEN-12)
-  helpTopics: Record<string, HelpTopic>; // context-sensitive help, editable under security control
+  helpTopics: Record<string, HelpTopic>; // administrator edits to the built-in help, keyed by screen (on-line help under security control)
 }

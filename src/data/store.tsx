@@ -3,8 +3,11 @@ import { useAuth, useClerk, useSession, useUser } from '@clerk/react';
 import { createSeed } from './seed';
 import { canSwitchRoles, effectiveUser, type ViewAs } from '../lib/viewAs';
 import { SyncClient } from './sync';
-import type { CompletedCourse, Course, Db, NoteCategory, OutlineStatus, RegistrationType, Student, Subsystem, TransferCourse, User } from './types';
-import { applyCourseSave, type CourseIssue } from '../lib/catalog';
+import type { CompletedCourse, Course, Db, HelpTopic, Major, NoteCategory, Offering, OutlineStatus, RegistrationType, Student, Subsystem, TransferCourse, User } from './types';
+import { applyCourseSave, canMaintainCatalog, type CourseIssue } from '../lib/catalog';
+import { normalizeList, valueListIssue } from '../lib/parameters';
+import { applyOfferingRemove, applyOfferingSave, applyTermSave, registrationClosed, registrationClosedIssue, type TermDates } from '../lib/schedule';
+import { applyMajorSave, type MajorIssue } from '../lib/majors';
 import { applyFacultySave, type FacultyEntry, type FacultyIssue } from '../lib/faculty';
 import { nowIso } from '../lib/format';
 import { registrationIssues, type EligibilityIssue } from '../lib/rules';
@@ -68,6 +71,10 @@ interface StoreApi {
   saveCourseHistory(studentId: string, kind: HistoryKind, entry: CompletedCourse | TransferCourse, originalKey: string | null): { ok: true } | ({ ok: false } & HistoryIssue);
   updateStudent(studentId: string, info: StudentInfo): { ok: true } | { ok: false; field: keyof StudentInfo; reason: string; requirement: string };
   saveCourse(course: Course, originalId: string | null): { ok: true } | ({ ok: false } & CourseIssue);
+  saveOffering(offering: Offering, originalNo: string | null): { ok: true } | { ok: false; field: string; reason: string; requirement: string };
+  removeOffering(scheduleNo: string): { ok: true } | { ok: false; field: string; reason: string; requirement: string };
+  saveTerm(dates: TermDates): { ok: true } | { ok: false; field: string; reason: string; requirement: string };
+  saveMajor(major: Major, originalId: string | null): { ok: true } | ({ ok: false } & MajorIssue);
   saveFaculty(entry: FacultyEntry, originalId: string | null): { ok: true } | ({ ok: false } & FacultyIssue);
   setOutlineStatus(studentId: string, courseId: string, status: OutlineStatus, note?: string): void;
   addOutlineCourse(studentId: string, courseId: string): void;
@@ -75,6 +82,8 @@ interface StoreApi {
   addGradeNote(scheduleNo: string, text: string): void;
   addUser(u: Omit<User, 'lastSignIn' | 'clerkUserId'>): { ok: true } | { ok: false; reason: string; requirement: string };
   updateUserAccess(userId: string, access: Subsystem[]): void;
+  saveValueList(key: string, values: string[]): { ok: true } | { ok: false; reason: string; requirement: string };
+  saveHelpTopic(key: string, topic: HelpTopic | null): { ok: true } | { ok: false; reason: string; requirement: string };
   updateUser(userId: string, changes: Pick<User, 'name' | 'jobTitle' | 'role' | 'access'>): { ok: true } | { ok: false; reason: string; requirement: string };
   setPassword(userId: string, password: string): Promise<{ ok: true; created: boolean } | { ok: false; reason: string }>;
 }
@@ -184,7 +193,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           else if (w.kind === 'conflict' && w.db) { serverDb.current = w.db; version.current = w.version; setDb(w.db); }
           else {
             setMode('local');
-            const why = w.kind === 'refused' ? w.reason : w.kind === 'unavailable' ? `Shared database unavailable (${w.reason}).` : 'Shared database returned an empty document.';
+            const why = w.kind === 'refused' ? w.reason : w.kind === 'unavailable' ? `Shared database unavailable: ${w.reason}.` : 'Shared database returned an empty document.';
             setSyncError(`${why} Changes stay in this browser.`);
             return;
           }
@@ -192,7 +201,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setMode('shared');
       } else {
         setMode('local');
-        setSyncError(`Shared database unavailable (${r.reason}). Changes stay in this browser.`);
+        setSyncError(`Shared database unavailable: ${r.reason}. Changes stay in this browser.`);
       }
     })();
     return () => { cancelled = true; };
@@ -265,6 +274,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     ...d, transactions: [...d.transactions, { at: nowIso(), by: by ?? user?.name ?? 'System', subsystem, text }],
   }), [user]);
 
+  /** Runs a pure change against the current document, then commits it (re-applied to the latest document) with its transaction text. */
+  function applyAndLog<R extends { ok: true; db: Db; log: string | null } | { ok: false }>(change: (d: Db) => R, subsystem: Subsystem | 'FRAMEWORK'): Exclude<R, { ok: true }> | { ok: true } {
+    const r = change(db);
+    if (!r.ok) return r as Exclude<R, { ok: true }>;
+    const log = (r as { log: string | null }).log;
+    if (log) commit((d) => { const again = change(d); return again.ok ? stamp((again as { db: Db }).db, subsystem, log) : d; });
+    return { ok: true };
+  }
+
   /** GEN-31: the standard message when a function needs a complete student record, or null. */
   const blockFor = (studentId: string) => {
     const s = db.students.find((x) => x.id === studentId);
@@ -296,7 +314,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const student = db.students.find((s) => s.id === studentId);
       const offering = db.offerings.find((o) => o.scheduleNo === scheduleNo);
       if (!student || !offering) return { ok: false, issues: [{ code: 'level', reason: 'Course or student not found.', requirement: 'Choose a current offering.' }] };
-      const issues = registrationIssues(db, student, offering);
+      const staff = user?.role === 'registrar' || user?.role === 'admin'; // staff may still register a student after the deadline
+      const issues = [...(registrationClosed(db) && !staff ? [registrationClosedIssue(db)] : []), ...registrationIssues(db, student, offering)];
       if (issues.length) return { ok: false, issues };
       const by = user?.name ?? `${student.firstName} ${student.lastName}`;
       commit((d) => stamp({ ...d, registrations: [...d.registrations, { studentId, scheduleNo, type, registeredBy: by, registeredAt: nowIso() }] }, 'REG', `Registered ${offering.courseId} (${scheduleNo}) for ${student.firstName} ${student.lastName}`));
@@ -352,6 +371,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (r.log) { const log = r.log; commit((d) => { const again = applyHistorySave(d, studentId, kind, entry, originalKey); return again.ok && again.log ? stamp(again.db, 'ER', log) : d; }); }
       return { ok: true };
     },
+
+    // REG-01/02/03, MAJ-01/02 and the term calendar: the registrar or an administrator maintains these; the server enforces the same (GEN-05).
+    saveOffering(offering, originalNo) { return applyAndLog((d) => applyOfferingSave(d, user, offering, originalNo), 'REG'); },
+    removeOffering(scheduleNo) { return applyAndLog((d) => applyOfferingRemove(d, user, scheduleNo), 'REG'); },
+    saveTerm(dates) { return applyAndLog((d) => applyTermSave(d, user, dates), 'REG'); },
+    saveMajor(major, originalId) { return applyAndLog((d) => applyMajorSave(d, user, major, originalId), 'MAJOR'); },
 
     saveCourse(course, originalId) {
       // FCI-03: the registrar (or an administrator) adds and maintains catalog courses; the server enforces the same rule (GEN-05).
@@ -439,6 +464,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return { ok: true };
       }
       commit((d) => stamp({ ...d, users: [...d.users, { ...u, email }] }, 'FRAMEWORK', `Added user ${u.name} (${u.id}) for ${email}`));
+      return { ok: true };
+    },
+
+    saveValueList(key, values) {
+      // GEN-11, GEN-12: user-maintained parameters and value lists, changed only by administrators or the registrar (the server enforces the same).
+      if (!canMaintainCatalog(user)) return { ok: false, reason: 'Changing value lists requires the registrar or a system administrator.', requirement: 'Ask an administrator to make this change.' };
+      const issue = valueListIssue(key, values);
+      if (issue) return { ok: false, ...issue };
+      const next = normalizeList(key, values);
+      commit((d) => stamp({ ...d, valueLists: { ...d.valueLists, [key]: next } }, 'FRAMEWORK', `Updated value list ${key}: ${next.join(', ')}`.slice(0, 200)));
+      return { ok: true };
+    },
+
+    saveHelpTopic(key, topic) {
+      // On-line help is user-updatable under security control; null restores the built-in text.
+      if (!canMaintainCatalog(user)) return { ok: false, reason: 'Editing help requires the registrar or a system administrator.', requirement: 'Ask an administrator to make this change.' };
+      if (topic && (!topic.title.trim() || !topic.summary.trim())) return { ok: false, reason: 'Help needs a title and a summary.', requirement: 'Fill in both before saving.' };
+      if (topic && topic.fields.some(([f, d]) => !f.trim() || !d.trim())) return { ok: false, reason: 'Every field note needs a field name and a description.', requirement: 'Fill in or remove the empty rows.' };
+      commit((d) => {
+        const helpTopics = { ...d.helpTopics };
+        if (topic) helpTopics[key] = { title: topic.title.trim(), summary: topic.summary.trim(), fields: topic.fields.map(([f, x]) => [f.trim(), x.trim()]), editedBy: user?.name ?? 'System', editedAt: nowIso() };
+        else delete helpTopics[key];
+        return stamp({ ...d, helpTopics }, 'FRAMEWORK', `${topic ? 'Updated' : 'Restored default'} help for ${key}`);
+      });
       return { ok: true };
     },
 

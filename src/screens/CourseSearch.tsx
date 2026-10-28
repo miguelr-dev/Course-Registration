@@ -4,11 +4,17 @@ import type { Offering, RegistrationType } from '../data/types';
 import { Shell, PageHeader, Dot, useToast } from '../components/Shell';
 import { Banner, Chip, Empty, PrereqChip, SeatsChip, Stamp } from '../components/ui';
 import { Check, ChevronDown, ChevronUp, Search, X } from '../components/icons';
-import { conflicts, courseOf, currentRegistrations, MAX_UNITS, prereqStatus, registrationIssues, seatsOpen, unitsRegistered } from '../lib/rules';
+import { conflicts, courseOf, currentRegistrations, prereqStatus, registrationIssues, seatsOpen, unitsRegistered } from '../lib/rules';
 import { formatDate, formatTimeRange, shortName } from '../lib/format';
 import { wildcardMatch } from '../lib/wildcard';
 import { useEscapeToCancel } from '../components/draft';
+import { maxUnits } from '../lib/parameters';
+import { canMaintainCatalog } from '../lib/catalog';
+import { registrationClosed, registrationClosedIssue } from '../lib/schedule';
+import { Link } from 'react-router-dom';
 import { useProgressive } from '../components/progressive';
+import { ReportsButton } from '../components/Reports';
+import { departmentChoices, departmentOfferingsReport, seatsAvailableReport, studentScheduleReport } from '../lib/reports';
 
 const COLS = '84px 1fr 44px 130px 112px 92px'; // seats fits "3 seats left" and "120 of 120" chips, which never wrap
 
@@ -37,7 +43,9 @@ export default function CourseSearch() {
 
   const sel = selected ? db.offerings.find((o) => o.scheduleNo === selected) : undefined;
   const selCourse = sel && courseOf(db, sel.courseId);
-  const issues = sel && student ? registrationIssues(db, student, sel) : [];
+  const staff = user?.role === 'registrar' || user?.role === 'admin';
+  const closed = registrationClosed(db) && !staff; // after the deadline only staff can register
+  const issues = sel && student ? [...(closed ? [registrationClosedIssue(db)] : []), ...registrationIssues(db, student, sel)] : [];
   const lastReg = [...db.transactions].reverse().find((t) => t.subsystem === 'REG' && t.by === user?.name);
 
   function cancel() { setSelected(null); setType('letter'); setNote(''); }
@@ -71,7 +79,7 @@ export default function CourseSearch() {
           </select>
         </div>
         <div className="kv">
-          <span className="k">Units after adding</span><span>{unitsRegistered(db, student.id) + selCourse.units} of {MAX_UNITS}</span>
+          <span className="k">Units after adding</span><span>{unitsRegistered(db, student.id) + selCourse.units} of {maxUnits(db)}</span>
           <span className="k">Schedule conflicts</span><span>{currentRegistrations(db, student.id).some((r) => { const o = db.offerings.find((x) => x.scheduleNo === r.scheduleNo); return o && conflicts(o, sel); }) ? <Chip kind="drop"><X />Conflict</Chip> : <Chip kind="ok"><Check />None</Chip>}</span>
           <span className="k">Seats</span><span>{seatsOpen(db, sel)} of {sel.capacity} open</span>
         </div>
@@ -93,7 +101,14 @@ export default function CourseSearch() {
 
   return (
     <Shell helpKey="search" screen="REG · Course search & registration" panel={panel}>
-      <PageHeader title="Search courses" meta={<><span>{db.term}</span><Dot /><span>Registration open until {formatDate(db.registrationCloses)}</span></>} />
+      <PageHeader title="Search courses" meta={<><span>{db.term}</span><Dot /><span>{registrationClosed(db) ? `Registration closed ${formatDate(db.registrationCloses)}` : `Registration open until ${formatDate(db.registrationCloses)}`}</span></>}>
+        {canMaintainCatalog(user) && <Link to="/schedule" className="btn secondary no-print">Class schedule</Link>}
+        <ReportsButton reports={[
+          ...(student ? [{ id: 'schedule', label: 'My schedule', build: () => studentScheduleReport(db, student.id) }] : []),
+          { id: 'offered', label: 'Courses offered by a department', params: [{ key: 'dept', label: 'Department', options: dept ? [...departmentChoices(db).filter(([id]) => id === dept), ...departmentChoices(db).filter(([id]) => id !== dept)] : departmentChoices(db) }], build: (v) => departmentOfferingsReport(db, v.dept) },
+          { id: 'seats', label: 'Courses with seats available', params: [{ key: 'dept', label: 'Department', options: departmentChoices(db, 'All departments') }], build: (v) => seatsAvailableReport(db, v.dept || null) },
+        ]} />
+      </PageHeader>
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div className="field grow" style={{ minWidth: 200 }}>
           <label className="label" htmlFor="q">Course ID or title</label>

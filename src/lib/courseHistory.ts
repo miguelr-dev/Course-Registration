@@ -1,5 +1,5 @@
 import type { CompletedCourse, Db, Student, TransferCourse } from '../data/types';
-import { LETTER_GRADES } from './rules';
+import { completionGrades } from './parameters';
 import { keyInfoBlock } from './student';
 
 /**
@@ -12,8 +12,6 @@ export type HistoryKind = 'here' | 'transfer';
 export type HistoryField = 'courseId' | 'title' | 'term' | 'units' | 'grade' | 'university' | 'location' | 'equivalentCourseId' | 'record';
 export interface HistoryIssue { field: HistoryField; reason: string; requirement: string; }
 
-/** Grades that complete a course: letter grades (not Incomplete) and credit / no credit. */
-export const COMPLETION_GRADES = [...LETTER_GRADES.filter((g) => g !== 'I'), 'CR', 'NC'];
 
 const SEASONS = ['Winter', 'Spring', 'Summer', 'Fall'];
 const termKey = (term: string) => { const [s, y] = term.split(' '); return Number(y) * 10 + SEASONS.indexOf(s); };
@@ -48,7 +46,8 @@ export function historyIssue(db: Db, student: Student, kind: HistoryKind, entry:
   if (!/^(Winter|Spring|Summer|Fall) (19|20)\d\d$/.test(c.term)) return { field: 'term', reason: 'Semester is not in the expected format.', requirement: 'Enter the season and year, e.g. Fall 2025.' };
   if (termKey(c.term) >= termKey(db.term)) return { field: 'term', reason: `${c.term} is not before the current semester (${db.term}).`, requirement: `Enter a completed semester; current courses are recorded through registration.` };
   if (!Number.isInteger(c.units) || c.units < 0 || c.units > 12) return { field: 'units', reason: 'Units must be a whole number from 0 to 12.', requirement: 'Enter the units earned, e.g. 4.' };
-  if (!COMPLETION_GRADES.includes(c.grade)) return { field: 'grade', reason: `${c.grade || 'The grade'} is not a completion grade.`, requirement: `Choose one of ${COMPLETION_GRADES.join(', ')}.` };
+  const grades = completionGrades(db); // user-maintained grade list (GEN-11)
+  if (!grades.includes(c.grade)) return { field: 'grade', reason: `${c.grade || 'The grade'} is not a completion grade.`, requirement: `Choose one of ${grades.join(', ')}.` };
   if (kind === 'transfer') {
     const t = c as TransferCourse;
     if (!t.university) return { field: 'university', reason: 'University name is required.', requirement: 'Enter the accredited university where the course was completed.' };

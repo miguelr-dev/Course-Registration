@@ -1,10 +1,14 @@
 import { useMemo, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useStore } from '../data/store';
 import type { Role, Subsystem, User } from '../data/types';
 import { Shell, PageHeader, useToast } from '../components/Shell';
 import { Banner, Chip, Empty, Stamp } from '../components/ui';
 import { Plus, Search, X } from '../components/icons';
 import { useProgressive } from '../components/progressive';
+import { ReportsButton } from '../components/Reports';
+import { authorizedUsersReport } from '../lib/reports';
+import { HelpEditor, ValueListsEditor } from '../components/Settings';
 import { formatDateTime } from '../lib/format';
 import { wildcardMatch } from '../lib/wildcard';
 import { ALLOWED_DOMAINS, STUDENT_ACCESS } from '../lib/auth';
@@ -23,8 +27,11 @@ export default function AuthorizedUsers() {
   const toast = useToast();
   const [q, setQ] = useState('');
   const [area, setArea] = useState('');
-  const [scope, setScope] = useState<'all' | Subsystem>('all');
   const [mode, setMode] = useState<{ kind: 'edit'; id: string } | { kind: 'add' } | null>(null);
+  // Framework administration: users, the user-maintained value lists (GEN-11, GEN-12) and the help screens.
+  const [params, setParams] = useSearchParams();
+  const tab = (['users', 'lists', 'help'] as const).find((t) => t === params.get('tab')) ?? 'users';
+  const showTab = (t: 'users' | 'lists' | 'help') => { setMode(null); setParams(t === 'users' ? {} : { tab: t }, { replace: true }); };
 
   const users = useMemo(() => db.users.filter((u) => (!area || u.access.includes(area as Subsystem)) && (wildcardMatch(q, u.name) || wildcardMatch(q, u.id) || wildcardMatch(q, u.email))), [db.users, q, area]);
   const page = useProgressive(users, `${q}|${area}`);
@@ -49,13 +56,22 @@ export default function AuthorizedUsers() {
       : undefined;
 
   return (
-    <Shell helpKey="users" screen="Framework · Authorized users" panel={panel}>
-      <PageHeader title="Authorized users" meta={<span>{db.users.length} users · passwords are kept by the sign-in service and are never stored, shown or printed here{scope !== 'all' ? ` · report: ${scope} only` : ''}</span>}>
+    <Shell helpKey="users" screen="Framework · Authorized users" panel={tab === 'users' ? panel : undefined}>
+      <PageHeader title={tab === 'users' ? 'Authorized users' : tab === 'lists' ? 'Value lists' : 'Help screens'} meta={<span>{tab === 'users' ? `${db.users.length} users · passwords are kept by the sign-in service and are never stored, shown or printed here` : tab === 'lists' ? 'Allowed values and validation limits used across SignMeUp · changes apply right away and are recorded under your name' : 'Context-sensitive help shown on each screen · edits are recorded under your name'}</span>}>
+        {tab === 'users' && <>
         <button className="btn secondary no-print" onClick={resetDemo} title={shared ? 'Restores the sample university for everyone; your admin account is kept' : 'Restores the sample university in this browser'}>Reset sample data</button>
-        <button className="btn secondary" onClick={() => window.print()}>Print user report</button>
+        <ReportsButton label="Print user report" reports={[{ id: 'users', label: 'Authorized users', params: [{ key: 'area', label: 'Scope', options: [['', 'Whole system'], ...AREAS.map((a): [string, string] => [a, `${a} subsystem`])] }], build: (v) => authorizedUsersReport(db, (v.area || null) as Subsystem | null) }]} />
         <button className="btn" onClick={() => setMode({ kind: 'add' })}><Plus />Add user</button>
+        </>}
       </PageHeader>
 
+      <div className="tabs page-tabs no-print" role="tablist">
+        {([['users', 'Users'], ['lists', 'Value lists'], ['help', 'Help screens']] as const).map(([t, l]) => <button key={t} role="tab" aria-selected={tab === t} className={`tab${tab === t ? ' active' : ''}`} onClick={() => showTab(t)}>{l}</button>)}
+      </div>
+
+      {tab === 'lists' && <ValueListsEditor />}
+      {tab === 'help' && <HelpEditor initialKey={params.get('screen')} />}
+      {tab === 'users' && <>
       <div className="no-print" style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div className="field grow" style={{ minWidth: 200 }}><label className="label" htmlFor="q">Name, email or employee number</label><div className="input-wrap"><Search /><input id="q" className="input" placeholder="Use * as a wildcard, e.g. Delgado-*" value={q} onChange={(e) => setQ(e.target.value)} /></div></div>
         <div className="field" style={{ width: 200 }}><label className="label" htmlFor="area">Access area</label><select id="area" className="input" value={area} onChange={(e) => setArea(e.target.value)}><option value="">All subsystems</option>{AREAS.map((a) => <option key={a} value={a}>{a}</option>)}</select></div>
@@ -66,8 +82,7 @@ export default function AuthorizedUsers() {
           <div className="row head" style={{ gridTemplateColumns: COLS }}><span>Name · email</span><span>Emp / student #</span><span>Job title</span><span>Access areas</span><span></span></div>
           {users.length === 0 && <Empty>No users match.</Empty>}
           {page.visible.map((u) => (
-            // The printed report covers the whole system or one subsystem (FW report); rows outside the chosen scope are left off the printout.
-            <div key={u.id} className={`row lead-first${target?.id === u.id ? ' selected' : ''}${scope !== 'all' && !u.access.includes(scope) ? ' no-print' : ''}`} style={{ gridTemplateColumns: COLS }}>
+            <div key={u.id} className={`row lead-first${target?.id === u.id ? ' selected' : ''}`} style={{ gridTemplateColumns: COLS }}>
               <div><div className="title">{u.name}</div><div className="detail">{u.email} · {u.lastSignIn ? `last sign-in ${formatDateTime(u.lastSignIn)}` : 'never signed in'}</div></div>
               <span className="sub">{u.id}{u.role === 'student' && <><br /><span className="xs">Student</span></>}</span>
               <span>{u.jobTitle}</span>
@@ -77,12 +92,9 @@ export default function AuthorizedUsers() {
           ))}
           {page.more}
         </div>
-        <div className="stamp no-print" style={{ gap: 10 }}>
-          <span>Showing {users.length} of {db.users.length}</span>
-          <span className="right">Report scope:</span>
-          <select className="input sm" style={{ width: 160 }} value={scope} onChange={(e) => setScope(e.target.value as typeof scope)} aria-label="Report scope"><option value="all">Whole system</option>{AREAS.map((a) => <option key={a} value={a}>{a} only</option>)}</select>
-        </div>
+        <div className="stamp no-print"><span>{users.length} of {db.users.length} users match · Print user report covers the whole system or one subsystem</span></div>
       </div>
+      </>}
     </Shell>
   );
 }
@@ -153,7 +165,7 @@ function UserPanel({ target, shared, onClose, onSave, onPassword, last }: {
           <span className="k">Last sign-in</span><span>{target.lastSignIn ? formatDateTime(target.lastSignIn) : 'Never'}</span>
         </div>
         <div className="field"><label className="label" htmlFor="eu-name">Full name <span className="req">*</span></label><input id="eu-name" className="input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></div>
-        <div className="field"><label className="label" htmlFor="eu-title">Job title <span className="req">*</span></label><input id="eu-title" className="input" value={draft.jobTitle} onChange={(e) => setDraft({ ...draft, jobTitle: e.target.value })} /></div>
+        <div className="field"><label className="label" htmlFor="eu-title">Job title <span className="req">*</span></label><input id="eu-title" className="input" list="vl-jobTitles" data-list="jobTitles" title="Press F4 or Alt+↓ for the list of values" value={draft.jobTitle} onChange={(e) => setDraft({ ...draft, jobTitle: e.target.value })} /></div>
         <div className="field"><label className="label" htmlFor="eu-role">Role <span className="req">*</span></label><select id="eu-role" className="input" value={draft.role} onChange={(e) => setDraft({ ...draft, role: e.target.value as Role })}>{ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}</select></div>
         <div className="field"><span className="label">Access areas <span className="req">*</span></span><AccessChecks value={draft.access} onChange={(access) => setDraft({ ...draft, access })} /><span className="help">Changes apply the next time this user opens a screen and are recorded under your name.</span></div>
         {err && <Banner kind="error"><strong>{err.reason}</strong> {err.requirement}</Banner>}
@@ -207,7 +219,7 @@ function AddPanel({ shared, onClose, onAdd }: { shared: boolean; onClose(): void
         <div className="field"><label className="label">Full name <span className="req">*</span></label><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Hyphenated names are accepted" /></div>
         <div className="field"><label className="label">{isStudent ? 'Student ID' : 'Employee number'} <span className="req">*</span></label><input className="input" inputMode="numeric" value={id} onChange={(e) => setId(e.target.value)} placeholder={isStudent ? '8 digits' : '5 to 8 digits'} />{isStudent && <span className="help">The account is identified by the student ID and opens that student’s record; a new record is started if none exists.</span>}</div>
         <div className="field"><label className="label">SDSU email <span className="req">*</span></label><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={`name@${ALLOWED_DOMAINS[0]}`} /><span className="help">The role takes effect the first time this address signs in.</span></div>
-        <div className="field"><label className="label">Job title <span className="req">*</span></label><input className="input" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} /></div>
+        <div className="field"><label className="label">Job title <span className="req">*</span></label><input className="input" list="vl-jobTitles" data-list="jobTitles" title="Press F4 or Alt+↓ for the list of values" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} /></div>
         <div className="field"><span className="label">Access areas <span className="req">*</span></span><AccessChecks value={access} onChange={setAccess} /></div>
         {shared && <>
           <div className="divider" />

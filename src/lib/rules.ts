@@ -1,13 +1,11 @@
 import type { Course, Db, Offering, Registration, Student } from '../data/types';
 import { keyInfoBlock } from './student';
-
-export const MAX_UNITS = 18;
+import { maxUnits } from './parameters';
 
 const GRADE_POINTS: Record<string, number> = {
   'A+': 4.0, A: 4.0, 'A-': 3.7, 'B+': 3.3, B: 3.0, 'B-': 2.7, 'C+': 2.3, C: 2.0, 'C-': 1.7, 'D+': 1.3, D: 1.0, 'D-': 0.7, F: 0,
 };
 
-export const LETTER_GRADES = ['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'F', 'I'];
 
 export function gradePoints(grade: string): number | undefined {
   return GRADE_POINTS[grade];
@@ -87,7 +85,7 @@ export function conflicts(a: Offering, b: Offering): boolean {
 }
 
 export interface EligibilityIssue {
-  code: 'prereq' | 'seats' | 'conflict' | 'units' | 'duplicate' | 'level' | 'graduate' | 'waiver' | 'record';
+  code: 'prereq' | 'seats' | 'conflict' | 'units' | 'duplicate' | 'level' | 'graduate' | 'waiver' | 'record' | 'closed';
   /** Reason the registration is rejected. */
   reason: string;
   /** Minimum requirement for the entry to be accepted. */
@@ -153,8 +151,9 @@ export function registrationIssues(db: Db, student: Student, offering: Offering)
   }
 
   const after = unitsRegistered(db, student.id) + course.units;
-  if (after > MAX_UNITS) {
-    issues.push({ code: 'units', reason: `Adding ${course.units} units would bring you to ${after} units.`, requirement: `Stay at or below ${MAX_UNITS} units for the term.` });
+  const limit = maxUnits(db);
+  if (after > limit) {
+    issues.push({ code: 'units', reason: `Adding ${course.units} units would bring you to ${after} units.`, requirement: `Stay at or below ${limit} units for the term.` });
   }
   return issues;
 }

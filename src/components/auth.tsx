@@ -64,7 +64,15 @@ export function NotAllowed() {
 }
 
 export function Loading({ text = 'Loading…' }: { text?: string }) {
-  return <div className="login"><div className="help" role="status">{text}</div></div>;
+  return (
+    <div className="login">
+      <div className="loader" role="status" aria-live="polite">
+        <div className="loader-brand">SignMeUp</div>
+        <span className="spinner" aria-hidden />
+        <span className="help">{text}</span>
+      </div>
+    </div>
+  );
 }
 
 export function MissingConfig() {

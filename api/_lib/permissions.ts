@@ -127,6 +127,7 @@ function refusal(c: Change, { user: me, isNew }: Actor, before: Db, after: Db, t
         return staff && has('REG') ? null : 'You can change only your own registrations.';
       }
       if (GRADE_COLS.some((k) => (c.before ?? c.after)![k] != null) && !canGrade) return 'A graded registration can be changed only by the instructor or a user with grade update privileges.';
+      if (!c.before && !staff && before.registrationCloses && today > before.registrationCloses) return `Registration for ${before.term} closed on ${before.registrationCloses}. Ask the registrar to register you.`;
       return ownStudent || (staff && has('REG')) ? null : 'You can register or drop courses only for yourself.';
     }
 
