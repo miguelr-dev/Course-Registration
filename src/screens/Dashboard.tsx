@@ -75,7 +75,7 @@ export default function Dashboard() {
               const c = courseOf(db, o.courseId)!;
               const inst = db.faculty.find((f) => f.id === o.instructorId);
               return (
-                <div key={o.scheduleNo} className="row" style={{ gridTemplateColumns: '84px 1fr 104px 100px 84px' }}>
+                <div key={o.scheduleNo} className="row" style={{ gridTemplateColumns: '84px 1fr 104px 112px 84px' }}>
                   <div><div className="cid">{c.id}</div><div className="detail">{o.scheduleNo}</div></div>
                   <div><div className="title">{c.title}</div><div className="detail">{o.days} {formatTimeRange(o.start, o.end)} · {o.location} · {inst ? shortName(inst.name) : '—'} · {c.units} units</div></div>
                   <PrereqChip met />

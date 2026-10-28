@@ -9,7 +9,7 @@ import { formatDate, formatTimeRange, shortName } from '../lib/format';
 import { wildcardMatch } from '../lib/wildcard';
 import { useEscapeToCancel } from '../components/draft';
 
-const COLS = '84px 1fr 44px 130px 64px 92px';
+const COLS = '84px 1fr 44px 130px 112px 92px'; // seats fits "3 seats left" and "120 of 120" chips, which never wrap
 
 export default function CourseSearch() {
   const { db, user, register, requestWaiver } = useStore();
