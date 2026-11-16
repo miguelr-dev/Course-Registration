@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useStore } from '../data/store';
 import { Shell, PageHeader, Dot, useToast } from '../components/Shell';
@@ -9,12 +10,15 @@ import { registrationClosed } from '../lib/schedule';
 import { ReportsButton } from '../components/Reports';
 import { studentScheduleReport } from '../lib/reports';
 import { X } from '../components/icons';
+import { RequestPanel } from '../components/RequestPanel';
+import type { StudentRequest } from '../lib/requests';
 import { courseOf, currentRegistrations, eligibleMajorOfferings, offeringOf, seatsOpen, unitsRegistered } from '../lib/rules';
 import { formatDate, formatTimeRange, shortName } from '../lib/format';
 
 export default function Dashboard() {
   const { db, user, register, drop } = useStore();
   const toast = useToast();
+  const [request, setRequest] = useState<{ initial?: Partial<StudentRequest>; dropAfterDeadline: boolean } | null>(null);
   const student = user?.role === 'student' ? db.students.find((s) => s.id === user.studentId) : undefined; // staff accounts may also own a student record; it applies only when acting as a student
   if (!user) return null;
   if (!student) return <Navigate to="/search" replace />;
@@ -35,17 +39,29 @@ export default function Dashboard() {
     else toast(`${r.issues[0].reason} ${r.issues[0].requirement}`);
   }
 
+  /** Before the deadline a drop is immediate; after it, the student is sent to a drop request instead. */
+  function onDrop(scheduleNo: string, courseId: string) {
+    const advisor = db.majors.find((m) => m.id === student!.majorId)?.advisors[0];
+    if (closed) return setRequest({ initial: { kind: 'drop', courseId, ...(advisor ? { to: advisor } : {}) }, dropAfterDeadline: true });
+    if (!confirm(`Drop ${courseId}? This is recorded under your name.`)) return;
+    const r = drop(student!.id, scheduleNo);
+    toast(r.ok ? `Dropped ${courseId}` : `${r.issues[0].reason} ${r.issues[0].requirement}`);
+  }
+
+  const panel = request ? <RequestPanel key={JSON.stringify(request)} student={student} initial={request.initial} dropAfterDeadline={request.dropAfterDeadline} onClose={() => setRequest(null)} /> : undefined;
+
   return (
-    <Shell helpKey="dashboard" screen="REG · Student dashboard">
+    <Shell helpKey="dashboard" screen="REG · Student dashboard" panel={panel}>
       <PageHeader
         title={`Welcome back, ${fullName(student)}`}
         meta={<><span>ID {student.id}</span><Dot /><span>{major?.title}</span><Dot /><span>{db.term}</span></>}
       >
         <ReportsButton label="Print schedule" reports={[{ id: 'schedule', label: 'My schedule', build: () => studentScheduleReport(db, student.id) }]} />
+        <button className="btn secondary no-print" onClick={() => setRequest({ dropAfterDeadline: false })}>Send a request</button>
         <Link to="/search" className="btn">Search courses</Link>
       </PageHeader>
 
-      {closed && !block && <Banner kind="info"><strong>Registration for {db.term} closed on {formatDate(db.registrationCloses)}.</strong> You can still drop courses. To add one, ask the registrar.</Banner>}
+      {closed && !block && <Banner kind="info"><strong>Registration for {db.term} closed on {formatDate(db.registrationCloses)}.</strong> To add a course, ask the registrar. To drop one, send a drop request to your advisor; the registrar drops it once it is approved.</Banner>}
       {block && <Banner kind="warn"><strong>{block.reason}</strong> {block.requirement} Registration is blocked until then. <Link to="/record">Open your student record</Link></Banner>}
 
       {(block || !outline || regs.length === 0) && <GettingStarted steps={[
@@ -72,7 +88,7 @@ export default function Dashboard() {
                     <div className="detail">{inst ? shortName(inst.name) : '—'}</div>
                   </div>
                   <span className="num">{c.units} units</span>
-                  <button className="btn ghost sm icon no-print" title={`Drop ${c.id}`} aria-label={`Drop ${c.id}`} onClick={() => { if (confirm(`Drop ${c.id}? This is recorded under your name.`)) { drop(student.id, r.scheduleNo); toast(`Dropped ${c.id}`); } }}><X /></button>
+                  <button className="btn ghost sm icon no-print" title={closed ? `Request to drop ${c.id}` : `Drop ${c.id}`} aria-label={closed ? `Request to drop ${c.id}` : `Drop ${c.id}`} onClick={() => onDrop(r.scheduleNo, c.id)}><X /></button>
                 </div>
               );
             })}

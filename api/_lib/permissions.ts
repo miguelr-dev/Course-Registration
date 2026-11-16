@@ -128,6 +128,7 @@ function refusal(c: Change, { user: me, isNew }: Actor, before: Db, after: Db, t
       }
       if (GRADE_COLS.some((k) => (c.before ?? c.after)![k] != null) && !canGrade) return 'A graded registration can be changed only by the instructor or a user with grade update privileges.';
       if (!c.before && !staff && before.registrationCloses && today > before.registrationCloses) return `Registration for ${before.term} closed on ${before.registrationCloses}. Ask the registrar to register you.`;
+      if (!c.after && !staff && before.registrationCloses && today > before.registrationCloses) return `The add/drop deadline for ${before.term} passed on ${before.registrationCloses}. Send a drop request to your advisor; the registrar drops the course once it is approved.`;
       return ownStudent || (staff && has('REG')) ? null : 'You can register or drop courses only for yourself.';
     }
 
