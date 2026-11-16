@@ -47,7 +47,7 @@ describe('object-based security', () => {
     expect(check(MARIA, { ...db, transactions: db.transactions.slice(1) }).ok).toBe(false);
   });
 
-  it('refuses a student registering after the deadline, but not a drop or a staff registration', () => {
+  it('refuses a student registering or dropping after the deadline, but not the registrar', () => {
     const open = db.offerings.find((o) => !db.registrations.some((r) => r.studentId === MARIA && r.scheduleNo === o.scheduleNo))!;
     const late = '2026-10-28';
     const closed = { ...db, registrationCloses: '2026-09-26' };
@@ -55,7 +55,15 @@ describe('object-based security', () => {
     expect(checkObjectPermissions(email(MARIA), closed, add, [], late).ok).toBe(false);
     expect(checkObjectPermissions(email(ROSA), closed, add, [], late)).toEqual({ ok: true });
     const mine = db.registrations.find((r) => r.studentId === MARIA && !r.grade)!;
-    expect(checkObjectPermissions(email(MARIA), closed, { ...closed, registrations: closed.registrations.filter((r) => r !== mine) }, [], late)).toEqual({ ok: true });
+    const dropped = { ...closed, registrations: closed.registrations.filter((r) => r !== mine) };
+    expect(checkObjectPermissions(email(MARIA), closed, dropped, [], late).ok).toBe(false);
+    expect(checkObjectPermissions(email(ADMIN), closed, dropped, [], late)).toEqual({ ok: true });
+    expect(checkObjectPermissions(email(MARIA), closed, dropped, [], '2026-09-26')).toEqual({ ok: true }); // the deadline day itself is still open
+  });
+
+  it('lets a student send a request to their own record only, stamped with their own ID', () => {
+    expect(check(MARIA, addNote(MARIA, MARIA))).toEqual({ ok: true });
+    expect(check(MARIA, addNote(TOMAS, MARIA)).ok).toBe(false);
   });
 
   it('lets a student register and drop only for themself', () => {

@@ -16,13 +16,15 @@ import { useEscapeToCancel } from '../components/draft';
 import { ReportsButton } from '../components/Reports';
 import { completionGrades } from '../lib/parameters';
 import { studentRecordReport, studentScheduleReport } from '../lib/reports';
+import { isRequestNote } from '../lib/requests';
+import { RequestPanel } from '../components/RequestPanel';
 
 const CATEGORY: Record<NoteCategory, { label: string; kind: 'ok' | 'warn' | 'drop' | 'indigo' }> = {
   advising: { label: 'Advising', kind: 'indigo' }, commendation: { label: 'Commendation', kind: 'ok' }, issue: { label: 'Issue', kind: 'drop' }, 'special-need': { label: 'Special need', kind: 'warn' },
 };
 
 export default function StudentRecord() {
-  const { db, user, appendNote, updateStudent, saveCourseHistory } = useStore();
+  const { db, user, appendNote, updateStudent, saveCourseHistory, drop } = useStore();
   const toast = useToast();
   const params = useParams();
   const isStudent = user?.role === 'student';
@@ -36,6 +38,7 @@ export default function StudentRecord() {
   const [noteErr, setNoteErr] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [history, setHistory] = useState<{ kind: HistoryKind; entry: CompletedCourse | TransferCourse; originalKey: string | null } | null>(null);
+  const [requesting, setRequesting] = useState(false);
 
   const matches = useMemo(() => db.students.filter((s) => wildcardMatch(query, fullName(s)) || wildcardMatch(query, `${s.firstName} ${s.lastName}`) || wildcardMatch(query, s.lastName) || wildcardMatch(query, s.id)), [db.students, query]);
 
@@ -61,7 +64,15 @@ export default function StudentRecord() {
           if (r.ok) { setTab(history.kind); toast(`${history.originalKey ? 'Course corrected' : 'Course added'} · recorded under ${user!.name}`); setHistory(null); }
           return r;
         }} />
-      : undefined;
+      : requesting && isStudent
+        ? <RequestPanel student={student} onClose={() => setRequesting(false)} />
+        : undefined;
+  const canDrop = user?.role === 'registrar' || user?.role === 'admin'; // carries out approved drop requests, including after the deadline
+  function staffDrop(scheduleNo: string, courseId: string) {
+    if (!confirm(`Drop ${courseId} for ${fullName(student!)}? This is recorded under your name.`)) return;
+    const r = drop(student!.id, scheduleNo);
+    toast(r.ok ? `Dropped ${courseId} · recorded under ${user!.name}` : `${r.issues[0].reason} ${r.issues[0].requirement}`);
+  }
   const blankHere: CompletedCourse = { courseId: '', title: '', term: '', units: 0, grade: '' };
   const blankTransfer: TransferCourse = { ...blankHere, university: '', location: '', equivalentCourseId: '' };
   const openHistory = (kind: HistoryKind, entry: CompletedCourse | TransferCourse, originalKey: string | null) => { setEditing(false); setHistory({ kind, entry, originalKey }); };
@@ -131,9 +142,9 @@ export default function StudentRecord() {
               {student.transfer.map((c) => <div key={historyKey('transfer', c)} className="row" style={{ gridTemplateColumns: `84px 1fr 1fr 100px 48px 56px${isStudent ? '' : ' 72px'}` }}><span className="cid">{c.courseId}</span><div><div className="title">{c.title}</div><div className="detail">{c.equivalentCourseId ? `Equivalent to ${c.equivalentCourseId}` : 'No equivalent course'}</div></div><div><div>{c.university}</div><div className="detail">{c.location}</div></div><span className="sub">{c.term}</span><span className="num">{c.units}<span className="show-small"> units</span></span><span style={{ textAlign: 'right', fontWeight: 600 }}>{c.grade}</span>{!isStudent && <span style={{ textAlign: 'right' }}><button className="btn ghost sm no-print" onClick={() => openHistory('transfer', c, historyKey('transfer', c))}>Correct</button></span>}</div>)}
             </>}
             {tab === 'current' && <>
-              <div className="row head" style={{ gridTemplateColumns: '84px 1fr 150px 48px' }}><span>Course</span><span>Title · instructor</span><span>Days / time</span><span style={{ textAlign: 'right' }}>Units</span></div>
+              <div className="row head" style={{ gridTemplateColumns: `84px 1fr 150px 48px${canDrop ? ' 64px' : ''}` }}><span>Course</span><span>Title · instructor</span><span>Days / time</span><span style={{ textAlign: 'right' }}>Units</span>{canDrop && <span />}</div>
               {regs.length === 0 && <Empty>Not registered this term.</Empty>}
-              {regs.map((r) => { const o = offeringOf(db, r.scheduleNo)!; const c = courseOf(db, o.courseId)!; const f = db.faculty.find((x) => x.id === o.instructorId); return <div key={r.scheduleNo} className="row" style={{ gridTemplateColumns: '84px 1fr 150px 48px' }}><span className="cid">{c.id}</span><div><div className="title">{c.title}</div><div className="detail">{f ? shortName(f.name) : '—'} · {r.type === 'letter' ? 'Letter grade' : r.type === 'crnc' ? 'CR / NC' : 'Audit'}</div></div><span className="sub">{o.days} {formatTimeRange(o.start, o.end)}</span><span className="num">{c.units}<span className="show-small"> units</span></span></div>; })}
+              {regs.map((r) => { const o = offeringOf(db, r.scheduleNo)!; const c = courseOf(db, o.courseId)!; const f = db.faculty.find((x) => x.id === o.instructorId); return <div key={r.scheduleNo} className="row" style={{ gridTemplateColumns: `84px 1fr 150px 48px${canDrop ? ' 64px' : ''}` }}><span className="cid">{c.id}</span><div><div className="title">{c.title}</div><div className="detail">{f ? shortName(f.name) : '—'} · {r.type === 'letter' ? 'Letter grade' : r.type === 'crnc' ? 'CR / NC' : 'Audit'}</div></div><span className="sub">{o.days} {formatTimeRange(o.start, o.end)}</span><span className="num">{c.units}<span className="show-small"> units</span></span>{canDrop && <span style={{ textAlign: 'right' }}><button className="btn ghost sm no-print" onClick={() => staffDrop(r.scheduleNo, c.id)}>Drop</button></span>}</div>; })}
             </>}
           </div>
         </div>
@@ -144,11 +155,17 @@ export default function StudentRecord() {
             {student.notes.length === 0 && <Empty>No notes on file.</Empty>}
             {[...student.notes].sort((a, b) => a.at.localeCompare(b.at)).map((n, i) => (
               <div key={`${n.at}-${n.byEmployeeId}-${i}`} className="stack" style={{ gap: 6, padding: '14px 20px', borderBottom: '1px solid var(--row-border)' }}>
-                <div className="cluster" style={{ gap: 10 }}><Chip kind={CATEGORY[n.category].kind}>{CATEGORY[n.category].label}</Chip><span className="sub right">{formatDateTime(n.at)} · Emp {n.byEmployeeId}{authorName(db, n.byEmployeeId) ? ` · ${authorName(db, n.byEmployeeId)}` : ''}</span></div>
+                <div className="cluster" style={{ gap: 10 }}><Chip kind={CATEGORY[n.category].kind}>{CATEGORY[n.category].label}</Chip>{isRequestNote(n.text) && <Chip kind="warn">Student request</Chip>}<span className="sub right">{formatDateTime(n.at)} · Emp {n.byEmployeeId}{authorName(db, n.byEmployeeId) ? ` · ${authorName(db, n.byEmployeeId)}` : ''}</span></div>
                 <div style={{ fontSize: 13, lineHeight: 1.5 }}>{n.text}</div>
               </div>
             ))}
           </div>
+          {isStudent && (
+            <div className="card-foot no-print cluster">
+              <span className="sub grow">Need something from your advisor, an instructor or the registrar?</span>
+              <button className="btn secondary sm" onClick={() => { setEditing(false); setHistory(null); setRequesting(true); }}>Send a request</button>
+            </div>
+          )}
           {!isStudent && (
             <form className="card-foot no-print" style={{ background: 'var(--surface)' }} onSubmit={submitNote}>
               <div className="field">

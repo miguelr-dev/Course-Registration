@@ -23,6 +23,11 @@ export function registrationClosedIssue(db: Pick<Db, 'registrationCloses' | 'ter
   return { code: 'closed' as const, reason: `Registration for ${db.term} closed on ${formatDate(db.registrationCloses)}.`, requirement: 'Ask the registrar to register you or to extend the deadline.' };
 }
 
+/** After the add/drop deadline a student cannot drop on their own either: a dropped course cannot be added back. The registrar still can. */
+export function dropClosedIssue(db: Pick<Db, 'registrationCloses' | 'term'>) {
+  return { code: 'closed' as const, reason: `The add/drop deadline for ${db.term} passed on ${formatDate(db.registrationCloses)}, and a dropped course cannot be added back.`, requirement: 'Send a drop request to your major advisor or instructor; the registrar drops the course once it is approved.' };
+}
+
 const DAYS = /^(M)?(T(?!h))?(W)?(Th)?(F)?$/;
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));

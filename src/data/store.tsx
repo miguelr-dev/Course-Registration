@@ -6,7 +6,8 @@ import { SyncClient } from './sync';
 import type { CompletedCourse, Course, Db, HelpTopic, Major, NoteCategory, Offering, OutlineStatus, RegistrationType, Student, Subsystem, TransferCourse, User } from './types';
 import { applyCourseSave, canMaintainCatalog, type CourseIssue } from '../lib/catalog';
 import { normalizeList, valueListIssue } from '../lib/parameters';
-import { applyOfferingRemove, applyOfferingSave, applyTermSave, registrationClosed, registrationClosedIssue, type TermDates } from '../lib/schedule';
+import { applyOfferingRemove, applyOfferingSave, applyTermSave, dropClosedIssue, registrationClosed, registrationClosedIssue, type TermDates } from '../lib/schedule';
+import { REQUEST_KINDS, requestIssue, requestNoteText, requestRecipients, type RequestField, type StudentRequest } from '../lib/requests';
 import { applyMajorSave, type MajorIssue } from '../lib/majors';
 import { applyFacultySave, type FacultyEntry, type FacultyIssue } from '../lib/faculty';
 import { nowIso } from '../lib/format';
@@ -66,8 +67,9 @@ interface StoreApi {
   signOut(): void;
   resetDemo(): void;
   register(studentId: string, scheduleNo: string, type: RegistrationType): Result;
-  drop(studentId: string, scheduleNo: string): void;
+  drop(studentId: string, scheduleNo: string): Result;
   requestWaiver(studentId: string, courseId: string, note: string): void;
+  sendRequest(studentId: string, request: StudentRequest): { ok: true } | { ok: false; field: RequestField; reason: string; requirement: string };
   appendNote(studentId: string, category: NoteCategory, text: string): void;
   saveCourseHistory(studentId: string, kind: HistoryKind, entry: CompletedCourse | TransferCourse, originalKey: string | null): { ok: true } | ({ ok: false } & HistoryIssue);
   updateStudent(studentId: string, info: StudentInfo): { ok: true } | { ok: false; field: keyof StudentInfo; reason: string; requirement: string };
@@ -338,7 +340,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     drop(studentId, scheduleNo) {
       const offering = db.offerings.find((o) => o.scheduleNo === scheduleNo);
+      const staff = user?.role === 'registrar' || user?.role === 'admin'; // after the deadline only staff drop, once a drop request is approved
+      if (registrationClosed(db) && !staff) return { ok: false, issues: [dropClosedIssue(db)] };
       commit((d) => stamp({ ...d, registrations: d.registrations.filter((r) => !(r.studentId === studentId && r.scheduleNo === scheduleNo)) }, 'REG', `Dropped ${offering?.courseId ?? scheduleNo} (${scheduleNo})`));
+      return { ok: true };
+    },
+
+    sendRequest(studentId, request) {
+      const student = db.students.find((s) => s.id === studentId);
+      if (!student || user?.studentId !== studentId) return { ok: false, field: 'to', reason: 'You can send requests only from your own student record.', requirement: 'Sign in as the student making the request.' };
+      const issue = requestIssue(db, student, request);
+      if (issue) return { ok: false, ...issue };
+      const text = requestNoteText(db, student, request);
+      const to = requestRecipients(db, student).find((r) => r.id === request.to)!;
+      const at = nowIso();
+      commit((d) => stamp({
+        ...d,
+        students: d.students.map((s) => (s.id === studentId ? { ...s, notes: [...s.notes, { at, byEmployeeId: user.id, category: 'advising', text }] } : s)),
+      }, 'ER', `Sent ${REQUEST_KINDS[request.kind].toLowerCase()} request to ${to.name}`));
+      return { ok: true };
     },
 
     requestWaiver(studentId, courseId, note) {
